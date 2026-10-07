@@ -18,7 +18,7 @@ interface ComponentProps {
 }
 
 export const DetallesPagosTabla: React.FC<ComponentProps> = ({ fechaInicio, fechaFin }) => {
-  const [pagos, setPagos] = useState([]);
+  const [pagos, setPagos] = useState<DetallesPagos[]>([]);
   const [cargando, setCargando] = useState(false);
 
   const [filtroEstado, setFiltroEstado] = useState('todos');
@@ -32,7 +32,7 @@ export const DetallesPagosTabla: React.FC<ComponentProps> = ({ fechaInicio, fech
       try {
         const res = await api.post('/reportes/detallesPagos', { fechaInicio, fechaFin });
         if (res.data.success) {
-          setPagos(res.data.data);
+          setPagos(Array.isArray(res.data.data) ? res.data.data : []);
         }
       } catch (error) {
         console.error('Error al obtener los detalles de pagos:', error);
@@ -44,7 +44,7 @@ export const DetallesPagosTabla: React.FC<ComponentProps> = ({ fechaInicio, fech
     obtenerDetallesPagos();
   }, [fechaInicio, fechaFin]);
 
-  const pagosFiltrados = pagos.filter((pago) => {
+  const pagosFiltrados = pagos.filter((pago: DetallesPagos) => {
     const cumpleEstado =
       filtroEstado === 'todos' || pago.estado?.toLowerCase() === filtroEstado.toLowerCase();
     const cumpleMetodo =

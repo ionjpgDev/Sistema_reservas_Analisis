@@ -53,6 +53,12 @@ router.get('/pendientes', verificarToken, esAdminOEmpleado, PagoController.pagos
 // Historial de pagos del cliente
 router.get('/historial', verificarToken, PagoController.historialPagos);
 
+// Revisión de pago por reserva (Admin/Empleado)
+router.get('/reserva/:id_reserva/revision', verificarToken, esAdminOEmpleado, PagoController.revisionPagoReserva);
+
+// Pagos por reserva
+router.get('/reserva/:id_reserva', verificarToken, PagoController.obtenerPagosPorReserva);
+
 // Reintentar pago después de rechazo
 router.post('/reintentar/:id_reserva', verificarToken, PagoController.reintentarPago);
 

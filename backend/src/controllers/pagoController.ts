@@ -7,30 +7,39 @@ export const PagoController = {
     procesarPagoConComprobante: async (req: Request, res: Response) => {
         try {
             const { id_usuario, rol } = (req as any).usuario;
-            const { id_reserva, metodo_pago, nro_comprobante } = req.body;
+            const { id_reserva, metodo_pago, nro_comprobante, referencia_pasarela, monto } = req.body;
 
             if (!id_reserva || !metodo_pago) {
                 return res.status(400).json({ error: 'id_reserva y metodo_pago son obligatorios' });
             }
 
-            const metodosValidos = ['presencial', 'tarjeta_debito', 'tarjeta_credito', 'qr'];
+            const metodosValidos = ['presencial', 'tarjeta_debito', 'tarjeta_credito', 'qr', 'transferencia'];
             if (!metodosValidos.includes(metodo_pago)) {
                 return res.status(400).json({ 
                     error: `Método de pago inválido. Opciones: ${metodosValidos.join(', ')}` 
                 });
             }
 
-            const esVirtual = ['tarjeta_debito', 'tarjeta_credito', 'qr'].includes(metodo_pago);
+            const esVirtual = ['tarjeta_debito', 'tarjeta_credito', 'qr', 'transferencia'].includes(metodo_pago);
 
             if (esVirtual && !req.file) {
                 return res.status(400).json({ 
                     error: 'Para pagos virtuales es obligatorio subir el comprobante de pago.' 
                 });
             }
+            if (esVirtual && !String(nro_comprobante || '').trim()) {
+                return res.status(400).json({ error: 'El número de operación del comprobante es obligatorio' });
+            }
+            if (esVirtual && String(nro_comprobante).trim().length > 50) {
+                return res.status(400).json({ error: 'El número de operación no puede superar 50 caracteres' });
+            }
 
             const reserva = await ReservaModel.obtenerPorId(Number(id_reserva));
             if (!reserva) {
                 return res.status(404).json({ error: 'La reserva no existe' });
+            }
+            if (rol?.toLowerCase() === 'cliente' && Number(reserva.id_cliente) !== Number(id_usuario)) {
+                return res.status(403).json({ error: 'No puedes registrar pagos para una reserva ajena' });
             }
 
             const pagoExistente = await PagoModel.obtenerPorReserva(Number(id_reserva));
@@ -47,7 +56,11 @@ export const PagoController = {
             const horaInicio = new Date(`2000-01-01T${reserva.hora_inicio}`);
             const horaFin = new Date(`2000-01-01T${reserva.hora_fin}`);
             const horas = (horaFin.getTime() - horaInicio.getTime()) / (1000 * 60 * 60);
-            const monto = precioHora * horas;
+            const montoCalculado = precioHora * horas;
+            const montoFinal = monto === undefined || monto === '' ? montoCalculado : Number(monto);
+            if (!Number.isFinite(montoFinal) || montoFinal <= 0) {
+                return res.status(400).json({ error: 'El monto del pago debe ser mayor que cero' });
+            }
 
             let comprobanteUrl = null;
             if (req.file) {
@@ -59,11 +72,11 @@ export const PagoController = {
 
             const pago = await PagoModel.crearPago({
                 id_reserva: Number(id_reserva),
-                monto,
+                monto: montoFinal,
                 metodo_pago,
                 tipo_registro: tipoRegistro,
-                referencia_pasarela: nro_comprobante || null,
-                nro_comprobante: nro_comprobante || null,
+                referencia_pasarela: referencia_pasarela || `RES-${id_reserva}`,
+                nro_comprobante: String(nro_comprobante || '').trim() || null,
                 comprobante_url: comprobanteUrl,
                 estado: estadoPago
             });
@@ -90,8 +103,8 @@ export const PagoController = {
 
     procesarPago: async (req: Request, res: Response) => {
         try {
-            const { id_usuario } = (req as any).usuario;
-            const { id_reserva, metodo_pago, nro_comprobante, referencia_pasarela, modo_demo } = req.body;
+            const { id_usuario, rol } = (req as any).usuario;
+            const { id_reserva, metodo_pago, nro_comprobante, referencia_pasarela, monto } = req.body;
 
             if (!id_reserva || !metodo_pago) {
                 return res.status(400).json({ error: 'id_reserva y metodo_pago son obligatorios' });
@@ -104,9 +117,16 @@ export const PagoController = {
                 });
             }
 
+            if (metodo_pago !== 'presencial') {
+                return res.status(400).json({ error: 'Los pagos virtuales deben enviarse junto con su comprobante' });
+            }
+
             const reserva = await ReservaModel.obtenerPorId(Number(id_reserva));
             if (!reserva) {
                 return res.status(404).json({ error: 'La reserva no existe' });
+            }
+            if (rol?.toLowerCase() === 'cliente' && Number(reserva.id_cliente) !== Number(id_usuario)) {
+                return res.status(403).json({ error: 'No puedes registrar pagos para una reserva ajena' });
             }
 
             const pagoExistente = await PagoModel.obtenerPorReserva(Number(id_reserva));
@@ -123,15 +143,18 @@ export const PagoController = {
             const horaInicio = new Date(`2000-01-01T${reserva.hora_inicio}`);
             const horaFin = new Date(`2000-01-01T${reserva.hora_fin}`);
             const horas = (horaFin.getTime() - horaInicio.getTime()) / (1000 * 60 * 60);
-            const monto = precioHora * horas;
+            const montoBase = precioHora * horas;
+            const montoPago = monto === undefined || monto === '' ? montoBase : Number(monto);
+            if (!Number.isFinite(montoPago) || montoPago <= 0) {
+                return res.status(400).json({ error: 'El monto del pago debe ser mayor que cero' });
+            }
 
             const tipoRegistro = metodo_pago === 'presencial' ? 'presencial' : 'online';
-            const modoDemoActivo = process.env.NODE_ENV !== 'production' && modo_demo === true;
-            const estadoPago = metodo_pago === 'presencial' || modoDemoActivo ? 'pagado' : 'pendiente_verificacion';
+            const estadoPago = metodo_pago === 'presencial' ? 'pagado' : 'pendiente_verificacion';
 
             const pago = await PagoModel.crearPago({
                 id_reserva: Number(id_reserva),
-                monto,
+                monto: montoPago,
                 metodo_pago,
                 tipo_registro: tipoRegistro,
                 referencia_pasarela: referencia_pasarela || null,
@@ -139,7 +162,7 @@ export const PagoController = {
                 estado: estadoPago
             });
 
-            if (metodo_pago === 'presencial' || modoDemoActivo) {
+            if (metodo_pago === 'presencial') {
                 await ReservaModel.actualizarEstado(Number(id_reserva), 'confirmada');
             } else {
                 await ReservaModel.actualizarEstado(Number(id_reserva), 'pendiente_pago');
@@ -147,9 +170,9 @@ export const PagoController = {
 
             res.status(201).json({
                 success: true,
-                message: metodo_pago === 'presencial' 
+                message: metodo_pago === 'presencial'
                     ? 'Pago presencial registrado. Reserva confirmada.'
-                    : 'Comprobante enviado. Tu reserva está pendiente de verificación.',
+                    : 'Pago registrado para revisión. Debes completar la transferencia con la referencia indicada por la app bancaria.',
                 data: pago
             });
 
@@ -170,7 +193,7 @@ export const PagoController = {
 
             const comprobanteUrl = `/uploads/comprobantes/${req.file.filename}`;
 
-            const pago = await PagoModel.obtenerPorReserva(Number(id_pago));
+            const pago = await PagoModel.obtenerPorId(Number(id_pago));
             if (!pago) {
                 return res.status(404).json({ error: 'Pago no encontrado' });
             }
@@ -180,12 +203,15 @@ export const PagoController = {
                 return res.status(403).json({ error: 'No autorizado' });
             }
 
-            const esVirtual = ['tarjeta_debito', 'tarjeta_credito', 'qr'].includes(pago.metodo_pago);
+            const esVirtual = ['tarjeta_debito', 'tarjeta_credito', 'qr', 'transferencia'].includes(pago.metodo_pago);
             if (!esVirtual) {
                 return res.status(400).json({ error: 'Los pagos presenciales no requieren comprobante' });
             }
 
             const pagoActualizado = await PagoModel.actualizarComprobante(Number(id_pago), comprobanteUrl);
+            if (!pagoActualizado) {
+                return res.status(409).json({ error: 'El pago ya fue verificado o no admite cambios' });
+            }
 
             res.json({
                 success: true,
@@ -202,15 +228,27 @@ export const PagoController = {
     verificarPago: async (req: Request, res: Response) => {
         try {
             const { id_pago } = req.params;
-            const { estado, motivo_rechazo } = req.body;
+            const { estado } = req.body;
 
             if (!estado || !['pagado', 'rechazado'].includes(estado)) {
                 return res.status(400).json({ error: 'Estado inválido. Use "pagado" o "rechazado"' });
             }
 
-            await PagoModel.verificarPago(Number(id_pago), estado, motivo_rechazo || null);
+            const pago = await PagoModel.obtenerPorId(Number(id_pago));
+            if (!pago) {
+                return res.status(404).json({ error: 'Pago no encontrado' });
+            }
+            if (!['pendiente', 'pendiente_verificacion'].includes(pago.estado)) {
+                return res.status(409).json({ error: 'Este pago ya fue verificado' });
+            }
+            if (estado === 'pagado' && pago.metodo_pago !== 'presencial' && !pago.comprobante_url) {
+                return res.status(400).json({ error: 'No se puede aprobar un pago virtual sin comprobante' });
+            }
 
-            const pago = await PagoModel.obtenerPorReserva(Number(id_pago));
+            const pagoActualizado = await PagoModel.verificarPago(Number(id_pago), estado);
+            if (!pagoActualizado) {
+                return res.status(409).json({ error: 'Este pago ya fue verificado' });
+            }
 
             if (estado === 'pagado') {
                 await ReservaModel.actualizarEstado(pago.id_reserva, 'confirmada');
@@ -226,6 +264,51 @@ export const PagoController = {
         } catch (error: any) {
             console.error('Error en verificarPago:', error);
             res.status(500).json({ error: error.message || 'Error al verificar pago' });
+        }
+    },
+
+    obtenerPagosPorReserva: async (req: Request, res: Response) => {
+        try {
+            const { id_reserva } = req.params;
+            const { id_usuario } = (req as any).usuario;
+
+            const reserva = await ReservaModel.obtenerPorId(Number(id_reserva));
+            if (!reserva) {
+                return res.status(404).json({ error: 'Reserva no encontrada' });
+            }
+
+            if (reserva.id_cliente !== id_usuario) {
+                return res.status(403).json({ error: 'No autorizado' });
+            }
+
+            const pagos = await PagoModel.obtenerPagosPorReserva(Number(id_reserva));
+            res.json({ success: true, data: pagos });
+        } catch (error: any) {
+            console.error('Error en obtenerPagosPorReserva:', error);
+            res.status(500).json({ error: 'Error al obtener los pagos de la reserva' });
+        }
+    },
+
+    revisionPagoReserva: async (req: Request, res: Response) => {
+        try {
+            const idReserva = Number(req.params.id_reserva);
+            const reserva = await ReservaModel.obtenerPorId(idReserva);
+            if (!reserva) {
+                return res.status(404).json({ error: 'Reserva no encontrada' });
+            }
+
+            const pagos = await PagoModel.obtenerPagosPorReserva(idReserva);
+            res.json({
+                success: true,
+                data: {
+                    id_reserva: idReserva,
+                    estado_reserva: reserva.estado,
+                    pago: pagos[0] || null
+                }
+            });
+        } catch (error: any) {
+            console.error('Error en revisionPagoReserva:', error);
+            res.status(500).json({ error: 'Error al consultar el pago de la reserva' });
         }
     },
 

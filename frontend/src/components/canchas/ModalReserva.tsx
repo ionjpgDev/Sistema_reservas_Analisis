@@ -227,6 +227,10 @@ const ModalReserva = ({ isOpen, onClose, onSave, cancha = null, esPresencial = f
             setErrores({ comprobante: 'Para pagos virtuales es obligatorio subir el comprobante' });
             return;
         }
+        if (esVirtual && !pagoData.nro_comprobante.trim()) {
+            setErrores({ nro_comprobante: 'Ingresa el número de operación que aparece en el comprobante' });
+            return;
+        }
 
         setCargando(true);
         try {
@@ -234,7 +238,8 @@ const ModalReserva = ({ isOpen, onClose, onSave, cancha = null, esPresencial = f
                 const formDataPago = new FormData();
                 formDataPago.append('id_reserva', String(idReservaCreada));
                 formDataPago.append('metodo_pago', pagoData.metodo_pago);
-                formDataPago.append('nro_comprobante', pagoData.nro_comprobante || '');
+                formDataPago.append('nro_comprobante', pagoData.nro_comprobante.trim());
+                formDataPago.append('referencia_pasarela', `RES-${idReservaCreada}`);
                 if (pagoData.comprobante) {
                     formDataPago.append('comprobante', pagoData.comprobante);
                 }
@@ -427,15 +432,18 @@ const ModalReserva = ({ isOpen, onClose, onSave, cancha = null, esPresencial = f
 
                                 <div>
                                     <label className="block text-sm font-medium mb-1">
-                                        Número de comprobante / Referencia
+                                        Número de operación del comprobante *
                                     </label>
                                     <input 
                                         type="text" 
                                         value={pagoData.nro_comprobante}
                                         onChange={(e) => setPagoData(prev => ({ ...prev, nro_comprobante: e.target.value }))}
-                                        placeholder="Ej: TXN-123456789"
+                                        placeholder="Código de transacción o autorización"
+                                        maxLength={50}
                                         className="w-full px-3 py-2.5 border rounded-xl bg-claro-fondo dark:bg-oscuro-fondo"
                                     />
+                                    <p className="mt-1 text-xs text-claro-texto2">Usa el identificador que aparece en el recibo. Referencia de reserva: RES-{idReservaCreada}</p>
+                                    {errores.nro_comprobante && <FieldError error={errores.nro_comprobante} touched={true} />}
                                 </div>
 
                                 <div>
@@ -497,12 +505,12 @@ const ModalReserva = ({ isOpen, onClose, onSave, cancha = null, esPresencial = f
                                  Volver
                             </button>
                             <button type="submit" 
-                                disabled={cargando || (esVirtual && !pagoData.comprobante)}
+                                disabled={cargando || (esVirtual && (!pagoData.comprobante || !pagoData.nro_comprobante.trim()))}
                                 className={`px-5 py-2 text-sm font-medium rounded-lg shadow-sm transition-all
-                                    ${cargando || (esVirtual && !pagoData.comprobante)
+                                    ${cargando || (esVirtual && (!pagoData.comprobante || !pagoData.nro_comprobante.trim()))
                                         ? 'bg-gray-400 cursor-not-allowed' 
                                         : 'bg-claro-primario hover:bg-claro-hover text-white'}`}>
-                                {cargando ? 'Procesando...' : (esVirtual && !pagoData.comprobante ? 'Sube el comprobante' : 'Confirmar Pago')}
+                                {cargando ? 'Procesando...' : (esVirtual && !pagoData.comprobante ? 'Sube el comprobante' : (esVirtual && !pagoData.nro_comprobante.trim() ? 'Ingresa el número de operación' : 'Confirmar Pago'))}
                             </button>
                         </div>
                     </form>

@@ -42,5 +42,7 @@ router.post('/comprobante/:id_pago', authMiddleware_1.verificarToken, upload.sin
 router.patch('/verificar/:id_pago', authMiddleware_1.verificarToken, authMiddleware_1.esAdminOEmpleado, pagoController_1.PagoController.verificarPago);
 router.get('/pendientes', authMiddleware_1.verificarToken, authMiddleware_1.esAdminOEmpleado, pagoController_1.PagoController.pagosPendientes);
 router.get('/historial', authMiddleware_1.verificarToken, pagoController_1.PagoController.historialPagos);
+router.get('/reserva/:id_reserva/revision', authMiddleware_1.verificarToken, authMiddleware_1.esAdminOEmpleado, pagoController_1.PagoController.revisionPagoReserva);
+router.get('/reserva/:id_reserva', authMiddleware_1.verificarToken, pagoController_1.PagoController.obtenerPagosPorReserva);
 router.post('/reintentar/:id_reserva', authMiddleware_1.verificarToken, pagoController_1.PagoController.reintentarPago);
 exports.default = router;

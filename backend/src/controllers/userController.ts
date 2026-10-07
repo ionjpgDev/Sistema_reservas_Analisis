@@ -194,7 +194,7 @@ const actualizarPerfil = async (req: AuthRequest, res: Response) => {
                 rol: usuarioActual.rol
             },
             process.env.JWT_SECRET as string,
-            { expiresIn: '15m' }
+            { expiresIn: '60m' }
         );
 
         res.status(200).json({

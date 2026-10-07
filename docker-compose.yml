@@ -1,63 +1,81 @@
 services:
   db:
     image: postgres:15-alpine
-    container_name: postgres-db-complejo-deportivo
-    restart: always
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: limber
-      POSTGRES_PASSWORD: 123456
-      POSTGRES_DB: bdcomplejodeportivo
+      POSTGRES_USER: ${DB_USER:-limber}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-123456}
+      POSTGRES_DB: ${DB_NAME:-bdcomplejodeportivo}
       TZ: America/La_Paz
     ports:
-      - "5432:5432"
+      - "${DB_PORT_HOST:-5432}:5432"
     volumes:
-      - ./database:/docker-entrypoint-initdb.d
+      - ./database:/docker-entrypoint-initdb.d:ro
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U limber -d bdcomplejodeportivo"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
-      retries: 5
-
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: sports_pgadmin
-    restart: always
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@sports.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-    ports:
-      - "5050:80"
-    depends_on:
-      - db
+      retries: 10
+      start_period: 10s
 
   backend:
-    build: ./backend
-    container_name: sports_backend
-    restart: always
+    build:
+      context: ./backend
+    restart: unless-stopped
     ports:
-      - "4000:4000"
-    env_file:
-      - ./backend/.env
+      - "${BACKEND_PORT_HOST:-4000}:4000"
     environment:
+      PORT: 4000
       DB_HOST: db
       DB_PORT: 5432
+      DB_USER: ${DB_USER:-limber}
+      DB_PASSWORD: ${DB_PASSWORD:-123456}
+      DB_NAME: ${DB_NAME:-bdcomplejodeportivo}
+      JWT_SECRET: ${JWT_SECRET:-local-only-change-before-deployment}
+      EMAIL_USER: ${EMAIL_USER:-}
+      EMAIL_PASS: ${EMAIL_PASS:-}
+      FRONTEND_URL: http://localhost:${FRONTEND_PORT:-5173}
     volumes:
       - ./backend/uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   frontend:
-    build: ./frontend
-    container_name: sports_frontend
-    restart: always
+    build:
+      context: ./frontend
+    restart: unless-stopped
     ports:
-      - "5173:5173"
+      - "${FRONTEND_PORT:-5173}:5173"
     environment:
-      VITE_API_URL: http://localhost:4000/api
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:${BACKEND_PORT_HOST:-4000}/api}
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    profiles: [tools]
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@sports.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin_local}
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   pgdata:

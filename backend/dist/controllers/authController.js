@@ -122,15 +122,7 @@ const login = async (req, res) => {
         if (!usuario.contraseña) {
             return res.status(401).json({ error: 'Credenciales inválidas' });
         }
-        let contraseñaValida = false;
-        if (usuario.contraseña.startsWith('$2b$') || usuario.contraseña.startsWith('$2a$')) {
-            contraseñaValida = await bcrypt_1.default.compare(contraseña, usuario.contraseña);
-        }
-        else {
-            contraseñaValida = (contraseña === usuario.contraseña ||
-                contraseña === '123456' ||
-                usuario.contraseña.startsWith('hash_pass_'));
-        }
+        const contraseñaValida = await bcrypt_1.default.compare(contraseña, usuario.contraseña);
         if (!contraseñaValida) {
             return res.status(401).json({ error: 'Credenciales inválidas' });
         }
@@ -139,7 +131,7 @@ const login = async (req, res) => {
             nombre: usuario.nombre,
             correo: usuario.correo,
             rol: usuario.rol
-        }, process.env.JWT_SECRET, { expiresIn: '15m' });
+        }, process.env.JWT_SECRET, { expiresIn: '60m' });
         res.status(200).json({
             mensaje: 'Inicio de sesión exitoso',
             token: token,

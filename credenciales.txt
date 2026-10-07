@@ -65,13 +65,14 @@
 
  Métodos de pago disponibles:
    🏢 Presencial      → Reserva confirmada al instante
-    Tarjeta Débito  → Requiere comprobante (obligatorio)
-   💎 Tarjeta Crédito → Requiere comprobante (obligatorio)
+   💳 Tarjeta Débito  → Requiere comprobante (obligatorio)
+   💎 Tarjeta Crédito → Requiere comprobante y verificación manual
    📱 QR              → Requiere comprobante (obligatorio)
 
  Para pagos virtuales:
    - Subir comprobante (JPG, PNG, WEBP o PDF, máx 5MB)
-   - Ingresar número de referencia (opcional)
+   - Ingresar número de operación/autorización que aparece en el comprobante
+   - La app conserva por separado la referencia interna de reserva (RES-id)
    - El admin/empleo verifica desde /verificar-pagos
 
 ============================================
@@ -106,8 +107,8 @@
  NOTAS IMPORTANTES
 ============================================
 
- - Todos los passwords de prueba son: 123456
- - La sesión expira después de 15 minutos de inactividad
+ - Todos los passwords de prueba son: Passw123
+ - La sesión se cierra después de 30 minutos de inactividad; el token tiene una validez máxima de 60 minutos
  - Para cancelar una reserva como cliente, debe ser
    con al menos 24 horas de anticipación
  - Los comprobantes de pago se guardan en:

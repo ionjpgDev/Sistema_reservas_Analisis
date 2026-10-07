@@ -56,14 +56,6 @@ const HistorialInscripcionesCliente = () => {
         obtenerInscripciones();
     }, []);
 
-    const formatearFecha = (fecha: string) => {
-        return new Date(`${fecha}T00:00:00`).toLocaleDateString("es-BO", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-        });
-    };
-
     const formatearFechaHora = (fecha: string) => {
         return new Date(fecha).toLocaleDateString("es-BO", {
             day: "2-digit",

@@ -6,15 +6,9 @@ WORKDIR /app
 RUN apk add --no-cache python3 make g++
 
 COPY package*.json ./
-
-# Instalar todas las dependencias compilándolas desde fuente
-RUN npm install
+RUN npm ci
 
 COPY . .
-
-# Eliminar node_modules del host (Windows) y reinstalar dentro del contenedor (Alpine/Linux)
-RUN rm -rf node_modules && npm install
-
 RUN npm run build
 
 EXPOSE 4000

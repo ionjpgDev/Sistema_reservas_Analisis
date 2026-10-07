@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.esAdminOEmpleado = exports.esAdmin = exports.verificarToken = void 0;
+exports.esCliente = exports.esAdminOEmpleado = exports.esAdmin = exports.verificarToken = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const verificarToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
@@ -24,7 +24,7 @@ const verificarToken = (req, res, next) => {
                 error: 'Sesión expirada por inactividad. Por favor, inicia sesión de nuevo.'
             });
         }
-        return res.status(403).json({
+        return res.status(401).json({
             error: 'Token inválido o corrupto.'
         });
     }
@@ -62,3 +62,4 @@ const esCliente = (req, res, next) => {
     }
     next();
 };
+exports.esCliente = esCliente;

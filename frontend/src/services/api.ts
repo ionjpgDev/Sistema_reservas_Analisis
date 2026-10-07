@@ -32,7 +32,8 @@ api.interceptors.response.use(
     },
     (error: AxiosError) => {
 
-        if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+        const esLogin = error.config?.url?.includes('/auth/login');
+        if (error.response?.status === 401 && !esLogin) {
             console.warn("La sesión ha expirado o es inválida (Interceptado por api.ts)");
 
             localStorage.removeItem('token');

@@ -173,16 +173,7 @@ const login = async (req: Request, res: Response) => {
             return res.status(401).json({ error: 'Credenciales inválidas' });
         }
 
-        let contraseñaValida = false;
-        if (usuario.contraseña.startsWith('$2b$') || usuario.contraseña.startsWith('$2a$')) {
-            contraseñaValida = await bcrypt.compare(contraseña, usuario.contraseña);
-        } else {
-            // Compatibilidad para usuarios precargados en seeders.sql
-            contraseñaValida = (
-                contraseña === usuario.contraseña ||
-                usuario.contraseña.startsWith('hash_pass_')
-            );
-        }
+        const contraseñaValida = await bcrypt.compare(contraseña, usuario.contraseña);
 
         if (!contraseñaValida) {
             return res.status(401).json({ error: 'Credenciales inválidas' });
@@ -196,7 +187,7 @@ const login = async (req: Request, res: Response) => {
                 rol: usuario.rol
             },
             process.env.JWT_SECRET as string,
-            { expiresIn: '15m' }
+            { expiresIn: '60m' }
         );
 
         res.status(200).json({

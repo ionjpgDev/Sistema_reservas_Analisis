@@ -1,6 +1,12 @@
 import { pool } from '../config/database';
 
 export const PagoModel = {
+    obtenerPorId: async (id_pago: number) => {
+        const query = `SELECT * FROM pago WHERE id_pago = $1;`;
+        const result = await pool.query(query, [id_pago]);
+        return result.rows[0];
+    },
+
     crearPago: async (data: {
         id_reserva: number;
         monto: number;
@@ -45,27 +51,37 @@ export const PagoModel = {
         return result.rows[0];
     },
 
+    obtenerPagosPorReserva: async (id_reserva: number) => {
+        const query = `
+            SELECT *
+            FROM pago
+            WHERE id_reserva = $1
+            ORDER BY fecha_pago DESC NULLS LAST;
+        `;
+        const result = await pool.query(query, [id_reserva]);
+        return result.rows;
+    },
+
     actualizarComprobante: async (id_pago: number, comprobante_url: string) => {
         const query = `
             UPDATE pago 
             SET comprobante_url = $1, estado = 'pendiente_verificacion'
-            WHERE id_pago = $2
+            WHERE id_pago = $2 AND estado IN ('pendiente', 'pendiente_verificacion')
             RETURNING *;
         `;
         const result = await pool.query(query, [comprobante_url, id_pago]);
         return result.rows[0];
     },
 
-    verificarPago: async (id_pago: number, estado: string, motivo_rechazo?: string | null) => {
+    verificarPago: async (id_pago: number, estado: string) => {
         const query = `
             UPDATE pago 
-            SET estado = $1, fecha_pago = now()
-            ${motivo_rechazo ? `, referencia_pasarela = COALESCE($3, referencia_pasarela)` : ''}
-            WHERE id_pago = $2
+            SET estado = $1,
+                fecha_pago = CASE WHEN $1 = 'pagado' THEN now() ELSE fecha_pago END
+            WHERE id_pago = $2 AND estado IN ('pendiente', 'pendiente_verificacion')
             RETURNING *;
         `;
-        const values = motivo_rechazo ? [estado, id_pago, motivo_rechazo] : [estado, id_pago];
-        const result = await pool.query(query, values);
+        const result = await pool.query(query, [estado, id_pago]);
         return result.rows[0];
     },
 

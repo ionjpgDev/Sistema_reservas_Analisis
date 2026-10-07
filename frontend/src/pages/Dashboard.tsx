@@ -1,4 +1,4 @@
-import { useAuth } from '../context/AuthContext';
+import { tieneRol, useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
 
 const Dashboard = () => {
@@ -20,8 +20,8 @@ const Dashboard = () => {
         year: 'numeric'
     });
 
-    const esAdmin = usuario?.rol === 'Administrador' || usuario?.rol === 'Admin';
-    const esEmpleado = usuario?.rol === 'Empleado';
+    const esAdmin = tieneRol(usuario, 'administrador', 'admin');
+    const esEmpleado = tieneRol(usuario, 'empleado');
     const esCliente = !esAdmin && !esEmpleado;
 
     return (

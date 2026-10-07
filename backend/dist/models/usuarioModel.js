@@ -199,11 +199,6 @@ const UsuarioModel = {
                 valuesUsuario.push(datosUpdate.contraseña);
                 contador++;
             }
-            if (datosUpdate.foto_url !== undefined) {
-                queryUsuario += `, foto_url = $${contador}`;
-                valuesUsuario.push(datosUpdate.foto_url);
-                contador++;
-            }
             queryUsuario += ` WHERE id_usuario = $${contador}`;
             valuesUsuario.push(id_usuario);
             await client.query(queryUsuario, valuesUsuario);

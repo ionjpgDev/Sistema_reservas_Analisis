@@ -12,6 +12,8 @@ const authRoutes_1 = __importDefault(require("./routes/authRoutes"));
 const userRoutes_1 = __importDefault(require("./routes/userRoutes"));
 const reserva_routes_1 = __importDefault(require("./routes/reserva.routes"));
 const pago_routes_1 = __importDefault(require("./routes/pago.routes"));
+const evento_routes_1 = __importDefault(require("./routes/evento.routes"));
+const reportes_routes_1 = __importDefault(require("./routes/reportes.routes"));
 exports.app = (0, express_1.default)();
 exports.app.use((0, cors_1.default)({
     origin: '*',
@@ -36,6 +38,8 @@ exports.app.use('/api/usuarios', userRoutes_1.default);
 exports.app.use('/api/canchas', cancha_routes_1.default);
 exports.app.use('/api/reservas', reserva_routes_1.default);
 exports.app.use('/api/pagos', pago_routes_1.default);
+exports.app.use('/api/eventos', evento_routes_1.default);
+exports.app.use('/api/reportes', reportes_routes_1.default);
 exports.app.get('/', (_req, res) => {
     res.json({
         message: 'API del sistema de gestión del complejo deportivo funcionando correctamente',

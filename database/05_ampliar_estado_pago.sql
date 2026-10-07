@@ -1,0 +1,2 @@
+ALTER TABLE pago
+    ALTER COLUMN estado TYPE VARCHAR(30);

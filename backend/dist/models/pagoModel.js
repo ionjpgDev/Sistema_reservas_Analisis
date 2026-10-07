@@ -3,6 +3,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PagoModel = void 0;
 const database_1 = require("../config/database");
 exports.PagoModel = {
+    obtenerPorId: async (id_pago) => {
+        const query = `SELECT * FROM pago WHERE id_pago = $1;`;
+        const result = await database_1.pool.query(query, [id_pago]);
+        return result.rows[0];
+    },
     crearPago: async (data) => {
         const query = `
             INSERT INTO pago 
@@ -35,26 +40,35 @@ exports.PagoModel = {
         const result = await database_1.pool.query(query, [id_reserva]);
         return result.rows[0];
     },
+    obtenerPagosPorReserva: async (id_reserva) => {
+        const query = `
+            SELECT *
+            FROM pago
+            WHERE id_reserva = $1
+            ORDER BY fecha_pago DESC NULLS LAST;
+        `;
+        const result = await database_1.pool.query(query, [id_reserva]);
+        return result.rows;
+    },
     actualizarComprobante: async (id_pago, comprobante_url) => {
         const query = `
             UPDATE pago 
             SET comprobante_url = $1, estado = 'pendiente_verificacion'
-            WHERE id_pago = $2
+            WHERE id_pago = $2 AND estado IN ('pendiente', 'pendiente_verificacion')
             RETURNING *;
         `;
         const result = await database_1.pool.query(query, [comprobante_url, id_pago]);
         return result.rows[0];
     },
-    verificarPago: async (id_pago, estado, motivo_rechazo) => {
+    verificarPago: async (id_pago, estado) => {
         const query = `
             UPDATE pago 
-            SET estado = $1, fecha_pago = now()
-            ${motivo_rechazo ? `, referencia_pasarela = COALESCE($3, referencia_pasarela)` : ''}
-            WHERE id_pago = $2
+            SET estado = $1,
+                fecha_pago = CASE WHEN $1 = 'pagado' THEN now() ELSE fecha_pago END
+            WHERE id_pago = $2 AND estado IN ('pendiente', 'pendiente_verificacion')
             RETURNING *;
         `;
-        const values = motivo_rechazo ? [estado, id_pago, motivo_rechazo] : [estado, id_pago];
-        const result = await database_1.pool.query(query, values);
+        const result = await database_1.pool.query(query, [estado, id_pago]);
         return result.rows[0];
     },
     obtenerHistorialPagos: async (id_cliente) => {

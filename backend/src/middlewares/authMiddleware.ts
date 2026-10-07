@@ -21,7 +21,7 @@ const verificarToken = (req: Request, res: Response, next: NextFunction) => {
                 error: 'Sesión expirada por inactividad. Por favor, inicia sesión de nuevo.'
             });
         }
-        return res.status(403).json({
+        return res.status(401).json({
             error: 'Token inválido o corrupto.'
         });
     }

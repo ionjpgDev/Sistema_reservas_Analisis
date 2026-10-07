@@ -14,6 +14,13 @@ export interface Usuario {
     [key: string]: unknown;
 }
 
+export const normalizarRol = (rol?: string | null): string => (rol ?? '').trim().toLowerCase();
+
+export const tieneRol = (usuario: Usuario | null | undefined, ...roles: string[]) => {
+    const rolActual = normalizarRol(usuario?.rol);
+    return roles.some((rol) => normalizarRol(rol) === rolActual);
+};
+
 export interface AuthContextType {
     usuario: Usuario | null;
     token: string | null;
@@ -74,12 +81,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         }
     }, [token]);
 
-    // SISTEMA AFK (15 minutos de inactividad)
+    // SISTEMA AFK (30 minutos de inactividad)
     useEffect(() => {
         if (!token) return;
 
         let timeoutId: ReturnType<typeof setTimeout>;
-        const TIEMPO_INACTIVIDAD = 15 * 60 * 1000;
+        const TIEMPO_INACTIVIDAD = 30 * 60 * 1000;
 
         const reiniciarTemporizador = (): void => {
             if (timeoutId) clearTimeout(timeoutId);

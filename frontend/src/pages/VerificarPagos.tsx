@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { tieneRol, useAuth } from '../context/AuthContext';
 import api from '../services/api';
 
 interface PagoPendiente {
@@ -12,6 +12,7 @@ interface PagoPendiente {
     fecha_pago: string;
     comprobante_url: string | null;
     referencia_pasarela: string | null;
+    nro_comprobante: string | null;
     nombre: string;
     apellido_paterno: string;
     correo: string;
@@ -30,6 +31,7 @@ const VerificarPagos = () => {
     const [mensaje, setMensaje] = useState('');
     const [modalOpen, setModalOpen] = useState(false);
     const [pagoSeleccionado, setPagoSeleccionado] = useState<PagoPendiente | null>(null);
+    const [procesandoId, setProcesandoId] = useState<number | null>(null);
 
     useEffect(() => {
         if (!isAuthenticated) {
@@ -37,8 +39,8 @@ const VerificarPagos = () => {
             return;
         }
 
-        const isAdmin = usuario?.rol === 'Admin' || usuario?.rol === 'Administrador';
-        const esEmpleado = usuario?.rol === 'Empleado';
+        const isAdmin = tieneRol(usuario, 'administrador', 'admin');
+        const esEmpleado = tieneRol(usuario, 'empleado');
         if (!isAdmin && !esEmpleado) {
             navigate('/dashboard');
             return;
@@ -61,6 +63,7 @@ const VerificarPagos = () => {
     };
 
     const handleVerificar = async (id_pago: number, estado: 'pagado' | 'rechazado') => {
+        setProcesandoId(id_pago);
         try {
             await api.patch(`/pagos/verificar/${id_pago}`, { estado });
             setMensaje(estado === 'pagado' ? 'Pago aprobado y reserva confirmada' : 'Pago rechazado');
@@ -69,6 +72,8 @@ const VerificarPagos = () => {
         } catch (err: any) {
             setError(err.response?.data?.error || 'Error al verificar el pago');
             setTimeout(() => setError(''), 3000);
+        } finally {
+            setProcesandoId(null);
         }
     };
 
@@ -82,12 +87,13 @@ const VerificarPagos = () => {
             presencial: '🏢 Presencial',
             tarjeta_debito: '💳 Tarjeta Débito',
             tarjeta_credito: '💎 Tarjeta Crédito',
-            qr: '📱 QR'
+            qr: '📱 QR',
+            transferencia: '🏦 Transferencia'
         };
         return labels[metodo] || metodo;
     };
 
-    const isAdmin = usuario?.rol === 'Admin' || usuario?.rol === 'Administrador';
+    const isAdmin = tieneRol(usuario, 'administrador', 'admin');
 
     if (cargando) {
         return (
@@ -168,10 +174,15 @@ const VerificarPagos = () => {
                                                 </div>
                                             </div>
 
-                                            {pago.referencia_pasarela && (
-                                                <div className="mt-3">
-                                                    <p className="text-xs text-claro-texto2">Referencia: {pago.referencia_pasarela}</p>
-                                                </div>
+                                            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-claro-texto2">
+                                                <span>Referencia de reserva: <strong className="font-semibold text-claro-texto dark:text-oscuro-texto">{pago.referencia_pasarela || `RES-${pago.id_reserva}`}</strong></span>
+                                                <span>N.º de operación: <strong className="font-semibold text-claro-texto dark:text-oscuro-texto">{pago.nro_comprobante || 'No indicado'}</strong></span>
+                                                <span>Registrado: {pago.fecha_pago ? new Date(pago.fecha_pago).toLocaleString('es-BO') : 'No disponible'}</span>
+                                            </div>
+                                            {!pago.comprobante_url && (
+                                                <p className="mt-3 text-sm font-medium text-amber-700 dark:text-amber-300">
+                                                    Sin comprobante: no se puede aprobar este pago.
+                                                </p>
                                             )}
                                         </div>
 
@@ -187,15 +198,17 @@ const VerificarPagos = () => {
                                             <div className="flex gap-2">
                                                 <button
                                                     onClick={() => handleVerificar(pago.id_pago, 'rechazado')}
-                                                    className="px-4 py-2 text-sm font-medium rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+                                                    disabled={procesandoId === pago.id_pago}
+                                                    className="px-4 py-2 text-sm font-medium rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                                                 >
-                                                     Rechazar
+                                                    {procesandoId === pago.id_pago ? 'Guardando...' : 'Rechazar'}
                                                 </button>
                                                 <button
                                                     onClick={() => handleVerificar(pago.id_pago, 'pagado')}
-                                                    className="px-4 py-2 text-sm font-medium rounded-lg bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 transition-colors"
+                                                    disabled={procesandoId === pago.id_pago || !pago.comprobante_url}
+                                                    className="px-4 py-2 text-sm font-medium rounded-lg bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                                                 >
-                                                     Aprobar
+                                                    {procesandoId === pago.id_pago ? 'Guardando...' : 'Aprobar'}
                                                 </button>
                                             </div>
                                         </div>
@@ -258,6 +271,18 @@ const VerificarPagos = () => {
                                     <div>
                                         <p className="text-claro-texto2">Fecha</p>
                                         <p className="font-medium text-claro-texto">{new Date(pagoSeleccionado.fecha_reserva).toLocaleDateString('es-ES')}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-claro-texto2">Referencia de reserva</p>
+                                        <p className="font-medium text-claro-texto">{pagoSeleccionado.referencia_pasarela || `RES-${pagoSeleccionado.id_reserva}`}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-claro-texto2">N.º de operación del comprobante</p>
+                                        <p className="font-medium text-claro-texto">{pagoSeleccionado.nro_comprobante || 'No indicado'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-claro-texto2">Registrado</p>
+                                        <p className="font-medium text-claro-texto">{pagoSeleccionado.fecha_pago ? new Date(pagoSeleccionado.fecha_pago).toLocaleString('es-BO') : 'No disponible'}</p>
                                     </div>
                                 </div>
                             </div>

@@ -113,7 +113,7 @@ CREATE TABLE pago (
     tipo_registro       VARCHAR(20) NOT NULL,
     referencia_pasarela VARCHAR(100),
     nro_comprobante     VARCHAR(50),
-    estado              VARCHAR(20) NOT NULL DEFAULT 'pagado',
+    estado              VARCHAR(30) NOT NULL DEFAULT 'pagado',
     id_reserva          INTEGER NOT NULL UNIQUE REFERENCES reserva(id_reserva)
 );
 
