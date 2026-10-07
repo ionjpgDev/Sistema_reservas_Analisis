@@ -137,7 +137,7 @@ const GestionReservas = () => {
     };
 
     if (loading) {
-        return <div className="p-8 text-center text-claro-texto2">Cargando reservas...</div>;
+        return <div className="p-8 text-center text-claro-texto2 dark:text-oscuro-texto2">Cargando reservas...</div>;
     }
 
     return (
@@ -145,7 +145,7 @@ const GestionReservas = () => {
             <div className="mx-auto max-w-7xl space-y-6">
                 <header className="flex flex-col justify-between gap-4 border-b border-claro-borde pb-5 dark:border-oscuro-borde sm:flex-row sm:items-end">
                     <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-claro-primario">Operaciones</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-claro-primario dark:text-oscuro-primario">Operaciones</p>
                         <h1 className="mt-1 text-2xl font-bold">Gestión de reservas</h1>
                         <p className="mt-1 text-sm text-claro-texto2 dark:text-oscuro-texto2">Busca, filtra y administra turnos del complejo.</p>
                     </div>
@@ -187,7 +187,7 @@ const GestionReservas = () => {
                         value={busqueda}
                         onChange={(event) => setBusqueda(event.target.value)}
                         placeholder="Buscar por cliente, cancha o número"
-                        className="min-w-0 rounded-lg border border-claro-borde bg-claro-tarjeta px-3 py-2.5 text-sm outline-none transition placeholder:text-claro-texto2 focus:border-claro-primario dark:border-oscuro-borde dark:bg-oscuro-tarjeta"
+                        className="min-w-0 rounded-lg border border-claro-borde bg-claro-tarjeta px-3 py-2.5 text-sm text-claro-texto placeholder:text-claro-texto2 outline-none transition focus:border-claro-primario dark:border-oscuro-borde dark:bg-oscuro-tarjeta dark:text-oscuro-texto dark:placeholder:text-oscuro-texto2"
                     />
                     <label className="sr-only" htmlFor="filtrar-fecha">Filtrar por fecha</label>
                     <input
@@ -214,7 +214,7 @@ const GestionReservas = () => {
                         type="button"
                         onClick={limpiarFiltros}
                         disabled={!filtrosActivos}
-                        className="rounded-lg border border-claro-borde px-4 py-2.5 text-sm font-medium text-claro-texto2 transition hover:border-claro-primario hover:text-claro-primario disabled:cursor-not-allowed disabled:opacity-40 dark:border-oscuro-borde"
+                        className="rounded-lg border border-claro-borde px-4 py-2.5 text-sm font-medium text-claro-texto2 transition hover:border-claro-primario hover:text-claro-primario disabled:cursor-not-allowed disabled:opacity-40 dark:border-oscuro-borde dark:text-oscuro-texto2 dark:hover:border-oscuro-primario dark:hover:text-oscuro-primario"
                     >
                         Limpiar filtros
                     </button>
@@ -241,7 +241,7 @@ const GestionReservas = () => {
                             {reservas.length ? 'Cambia los criterios o limpia los filtros.' : 'Las nuevas reservas aparecerán aquí.'}
                         </p>
                         {filtrosActivos && (
-                            <button type="button" onClick={limpiarFiltros} className="mt-3 text-sm font-semibold text-claro-primario hover:underline">Limpiar filtros</button>
+                            <button type="button" onClick={limpiarFiltros} className="mt-3 text-sm font-semibold text-claro-primario hover:underline dark:text-oscuro-primario">Limpiar filtros</button>
                         )}
                     </div>
                 ) : (
@@ -319,46 +319,46 @@ const GestionReservas = () => {
                         role="dialog"
                         aria-modal="true"
                         aria-labelledby="titulo-revision-pago"
-                        className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-claro-borde bg-claro-tarjeta shadow-2xl dark:border-oscuro-borde dark:bg-oscuro-tarjeta"
+                            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-claro-borde bg-claro-tarjeta text-claro-texto shadow-2xl dark:border-oscuro-borde dark:bg-oscuro-tarjeta dark:text-oscuro-texto"
                         onClick={(event) => event.stopPropagation()}
                     >
                         <header className="flex items-start justify-between border-b border-claro-borde px-5 py-4 dark:border-oscuro-borde">
                             <div>
-                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-claro-primario">Reserva #{reservaARevisar.id_reserva}</p>
+                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-claro-primario dark:text-oscuro-primario">Reserva #{reservaARevisar.id_reserva}</p>
                                 <h2 id="titulo-revision-pago" className="mt-1 text-xl font-bold">Revisión de pago</h2>
                             </div>
-                            <button type="button" onClick={() => setModalRevisionOpen(false)} aria-label="Cerrar revisión" className="rounded-md px-2 py-1 text-xl text-claro-texto2 hover:bg-claro-tinte dark:hover:bg-oscuro-tinte">×</button>
+                            <button type="button" onClick={() => setModalRevisionOpen(false)} aria-label="Cerrar revisión" className="rounded-md px-2 py-1 text-xl text-claro-texto2 hover:bg-claro-tinte dark:text-oscuro-texto2 dark:hover:bg-oscuro-tinte">×</button>
                         </header>
 
                         <div className="space-y-4 p-5">
                             <div className="grid grid-cols-2 gap-3 rounded-lg bg-claro-fondo p-4 text-sm dark:bg-oscuro-fondo">
                                 <div>
-                                    <p className="text-xs text-claro-texto2">Cliente</p>
+                                    <p className="text-xs text-claro-texto2 dark:text-oscuro-texto2">Cliente</p>
                                     <p className="font-semibold">{reservaARevisar.cliente_nombre} {reservaARevisar.apellido_paterno}</p>
                                 </div>
                                 <div>
-                                    <p className="text-xs text-claro-texto2">Cancha</p>
+                                    <p className="text-xs text-claro-texto2 dark:text-oscuro-texto2">Cancha</p>
                                     <p className="font-semibold">{reservaARevisar.cancha_nombre}</p>
                                 </div>
                                 <div>
-                                    <p className="text-xs text-claro-texto2">Fecha y horario</p>
+                                    <p className="text-xs text-claro-texto2 dark:text-oscuro-texto2">Fecha y horario</p>
                                     <p className="font-semibold">{formatearFecha(reservaARevisar.fecha_reserva)} · {String(reservaARevisar.hora_inicio).slice(0, 5)}-{String(reservaARevisar.hora_fin).slice(0, 5)}</p>
                                 </div>
                                 <div>
-                                    <p className="text-xs text-claro-texto2">Estado de reserva</p>
+                                    <p className="text-xs text-claro-texto2 dark:text-oscuro-texto2">Estado de reserva</p>
                                     <p className="font-semibold">{obtenerEtiquetaEstado(reservaARevisar.estado)}</p>
                                 </div>
                             </div>
 
                             {revisionCargando ? (
-                                <p className="py-6 text-center text-sm text-claro-texto2">Consultando registro de pago...</p>
+                                <p className="py-6 text-center text-sm text-claro-texto2 dark:text-oscuro-texto2">Consultando registro de pago...</p>
                             ) : errorRevision ? (
                                 <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">{errorRevision}</div>
                             ) : revisionPago?.pago ? (
                                 <>
                                     <div className="flex items-center justify-between rounded-lg border border-claro-borde p-4 dark:border-oscuro-borde">
                                         <div>
-                                            <p className="text-xs text-claro-texto2">Pago registrado</p>
+                                            <p className="text-xs text-claro-texto2 dark:text-oscuro-texto2">Pago registrado</p>
                                             <p className="mt-1 text-xl font-bold">Bs. {Number(revisionPago.pago.monto).toFixed(2)}</p>
                                         </div>
                                         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${revisionPago.pago.estado === 'pagado' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : revisionPago.pago.estado === 'rechazado' ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'}`}>
@@ -387,7 +387,7 @@ const GestionReservas = () => {
                             ) : (
                                 <div className="rounded-lg border border-dashed border-claro-borde p-6 text-center dark:border-oscuro-borde">
                                     <p className="font-semibold">No hay pago registrado</p>
-                                    <p className="mt-1 text-sm text-claro-texto2">Esta reserva todavía no tiene un pago asociado.</p>
+                                    <p className="mt-1 text-sm text-claro-texto2 dark:text-oscuro-texto2">Esta reserva todavía no tiene un pago asociado.</p>
                                 </div>
                             )}
                         </div>

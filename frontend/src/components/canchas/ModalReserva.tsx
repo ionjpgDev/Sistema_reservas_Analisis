@@ -1,5 +1,5 @@
 import { useState, useEffect, ChangeEvent, FormEvent, useRef } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { tieneRol, useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import FieldError from '../FieldError';
 import type { Cancha } from './cancha.types';
@@ -16,10 +16,7 @@ type MetodoPago = 'presencial' | 'tarjeta_debito' | 'tarjeta_credito' | 'qr';
 
 const ModalReserva = ({ isOpen, onClose, onSave, cancha = null, esPresencial = false }: ModalReservaProps) => {
     const { usuario } = useAuth();
-    const requiereCliente = Boolean(
-        esPresencial ||
-        (usuario && (usuario.rol === 'Admin' || usuario.rol === 'Administrador' || usuario.rol === 'Empleado' || usuario.rol === 'empleado'))
-    );
+    const requiereCliente = esPresencial || tieneRol(usuario, 'admin', 'administrador', 'empleado');
 
     const [paso, setPaso] = useState<'reserva' | 'pago'>('reserva');
     const [formData, setFormData] = useState({
@@ -40,6 +37,10 @@ const ModalReserva = ({ isOpen, onClose, onSave, cancha = null, esPresencial = f
     
     const [canchas, setCanchas] = useState<Cancha[]>([]);
     const [clientes, setClientes] = useState<any[]>([]);
+    const [filtroCliente, setFiltroCliente] = useState('');
+    const [cargandoClientes, setCargandoClientes] = useState(false);
+    const [errorClientes, setErrorClientes] = useState('');
+    const [versionCargaClientes, setVersionCargaClientes] = useState(0);
     const [errores, setErrores] = useState<Record<string, string>>({});
     const [cargando, setCargando] = useState(false);
     const [error, setError] = useState('');
@@ -58,21 +59,33 @@ const ModalReserva = ({ isOpen, onClose, onSave, cancha = null, esPresencial = f
                     const res = await api.get('/canchas');
                     setCanchas(res.data.data || []);
                 }
-                if (requiereCliente) {
+            } catch (err) {
+                console.error('Error al cargar canchas', err);
+            }
+
+            if (requiereCliente) {
+                setCargandoClientes(true);
+                setErrorClientes('');
+                try {
                     const res = await api.get('/usuarios');
-                    const usuarios = res.data?.data || res.data || [];
-                    const clientesFiltrados = (Array.isArray(usuarios) ? usuarios : []).filter((usuarioActual) => {
+                    const usuarios = Array.isArray(res.data) ? res.data : Array.isArray(res.data?.data) ? res.data.data : [];
+                    const clientesFiltrados = usuarios.filter((usuarioActual: any) => {
                         const rol = String(usuarioActual.rol || '').trim().toLowerCase();
-                        return rol === 'cliente' || rol === 'cliente';
+                        return rol === 'cliente';
                     });
                     setClientes(clientesFiltrados);
+                    if (clientesFiltrados.length === 0) setErrorClientes('No hay clientes disponibles para asociar a la reserva.');
+                } catch (err) {
+                    console.error('Error al cargar clientes', err);
+                    setClientes([]);
+                    setErrorClientes('No se pudo cargar la lista de clientes. Revisa la conexión e inténtalo otra vez.');
+                } finally {
+                    setCargandoClientes(false);
                 }
-            } catch (err) {
-                console.error('Error al cargar datos', err);
             }
         };
         fetchData();
-    }, [isOpen, cancha, requiereCliente]);
+    }, [isOpen, cancha, requiereCliente, versionCargaClientes]);
 
     useEffect(() => {
         if (cancha) {
@@ -91,6 +104,7 @@ const ModalReserva = ({ isOpen, onClose, onSave, cancha = null, esPresencial = f
                 id_cliente: '',
                 observaciones: ''
             });
+            setFiltroCliente('');
             setPagoData({ metodo_pago: 'presencial', comprobante: null, nro_comprobante: '', previewUrl: '' });
             setErrores({});
             setError('');
@@ -129,6 +143,14 @@ const ModalReserva = ({ isOpen, onClose, onSave, cancha = null, esPresencial = f
     useEffect(() => {
         calcularMonto();
     }, [formData.hora_inicio, formData.hora_fin, formData.id_cancha, cancha, canchas]);
+
+    const terminoCliente = filtroCliente.trim().toLocaleLowerCase('es');
+    const clientesVisibles = clientes.filter((cliente) => {
+        const idCliente = cliente.id_cliente ?? cliente.id_usuario ?? cliente.id;
+        const nombre = `${cliente.nombre || ''} ${cliente.apellidos || cliente.paterno || cliente.apellido_paterno || cliente.apellidoPaterno || ''}`.trim();
+        const datosCliente = `${idCliente} ${nombre} ${cliente.correo || ''}`.toLocaleLowerCase('es');
+        return datosCliente.includes(terminoCliente);
+    });
 
     if (!isOpen) return null;
 
@@ -311,18 +333,35 @@ const ModalReserva = ({ isOpen, onClose, onSave, cancha = null, esPresencial = f
                         
                         {requiereCliente && (
                             <div>
-                                <label className="block text-sm font-medium mb-1">Cliente *</label>
-                                <select name="id_cliente" value={formData.id_cliente} onChange={handleChange}
-                                    className="w-full px-3 py-2.5 border rounded-xl bg-claro-fondo dark:bg-oscuro-fondo">
-                                    <option value="">Seleccione un cliente</option>
-                                    {clientes.map(c => {
+                                <label htmlFor="filtro-cliente-reserva" className="block text-sm font-medium mb-1">Cliente *</label>
+                                <input
+                                    id="filtro-cliente-reserva"
+                                    type="search"
+                                    value={filtroCliente}
+                                    onChange={(event) => {
+                                        setFiltroCliente(event.target.value);
+                                        setFormData((actual) => ({ ...actual, id_cliente: '' }));
+                                    }}
+                                    placeholder="Buscar por nombre o ID"
+                                    aria-label="Buscar cliente por nombre o ID"
+                                    autoComplete="off"
+                                    disabled={cargandoClientes || clientes.length === 0}
+                                    className="mb-2 w-full rounded-xl border border-claro-borde bg-claro-tarjeta px-3 py-2.5 text-claro-texto placeholder:text-claro-texto2 focus:border-claro-primario focus:outline-none dark:border-oscuro-borde dark:bg-oscuro-tarjeta dark:text-oscuro-texto dark:placeholder:text-oscuro-texto2"
+                                />
+                                <select name="id_cliente" value={formData.id_cliente} onChange={handleChange} disabled={cargandoClientes || clientesVisibles.length === 0}
+                                    className="w-full rounded-xl border border-claro-borde bg-claro-tarjeta px-3 py-2.5 text-claro-texto focus:border-claro-primario focus:outline-none dark:border-oscuro-borde dark:bg-oscuro-tarjeta dark:text-oscuro-texto">
+                                    <option value="">{cargandoClientes ? 'Cargando clientes...' : clientesVisibles.length ? 'Seleccione un cliente' : 'No hay coincidencias'}</option>
+                                    {clientesVisibles.map(c => {
                                         const idCliente = c.id_cliente ?? c.id_usuario ?? c.id;
                                         return <option key={idCliente} value={String(idCliente)}>
-                                            {c.nombre} {c.paterno || c.apellido_paterno || c.apellidoPaterno || ''} - {c.correo}
+                                            {c.nombre} {c.apellidos || c.paterno || c.apellido_paterno || c.apellidoPaterno || ''} · ID {idCliente}
                                         </option>;
                                     })}
                                 </select>
-                                {clientes.length === 0 && <p className="mt-1 text-xs text-red-600">No se pudieron cargar clientes disponibles.</p>}
+                                {errorClientes && <div role="alert" className="mt-1 flex flex-wrap items-center gap-2 text-xs text-red-600">
+                                    <span>{errorClientes}</span>
+                                    <button type="button" onClick={() => setVersionCargaClientes((version) => version + 1)} className="font-semibold underline">Reintentar</button>
+                                </div>}
                                 {errores.id_cliente && <FieldError error={errores.id_cliente} touched={true} />}
                             </div>
                         )}

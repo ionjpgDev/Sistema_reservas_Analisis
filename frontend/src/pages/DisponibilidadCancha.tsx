@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { tieneRol, useAuth } from '../context/AuthContext';
 import { canchaApi } from '../components/canchas/cancha.api';
 import type { Cancha } from '../components/canchas/cancha.types';
 import api from '../services/api';
@@ -36,12 +36,14 @@ const DisponibilidadCancha = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { usuario } = useAuth();
-    const esAdmin = Boolean(usuario && (usuario.rol === 'Admin' || usuario.rol === 'Administrador'));
+    const [clienteObligatorioServidor, setClienteObligatorioServidor] = useState(false);
+    const requiereCliente = clienteObligatorioServidor || tieneRol(usuario, 'admin', 'administrador', 'empleado');
     const [cancha, setCancha] = useState<Cancha | null>(null);
     const [mes, setMes] = useState(() => new Date());
     const [fechaSeleccionada, setFechaSeleccionada] = useState(fechaClave(new Date()));
     const [clientes, setClientes] = useState<any[]>([]);
     const [clienteSeleccionado, setClienteSeleccionado] = useState('');
+    const [filtroCliente, setFiltroCliente] = useState('');
     const [reservasMes, setReservasMes] = useState<ReservaAgenda[]>([]);
     const [reservasDia, setReservasDia] = useState<ReservaAgenda[]>([]);
     const [horasSeleccionadas, setHorasSeleccionadas] = useState<number[]>([]);
@@ -87,7 +89,7 @@ const DisponibilidadCancha = () => {
 
     useEffect(() => {
         const cargarClientes = async () => {
-            if (!esAdmin) return;
+            if (!requiereCliente) return;
             try {
                 const response = await api.get('/usuarios');
                 const usuarios = response.data?.data || response.data || [];
@@ -96,15 +98,13 @@ const DisponibilidadCancha = () => {
                     return rol === 'cliente';
                 });
                 setClientes(clientesFiltrados);
-                if (clientesFiltrados.length > 0) {
-                    setClienteSeleccionado(String(clientesFiltrados[0].id_cliente ?? clientesFiltrados[0].id_usuario ?? clientesFiltrados[0].id));
-                }
+                setClienteSeleccionado('');
             } catch {
                 setClientes([]);
             }
         };
         cargarClientes();
-    }, [esAdmin]);
+    }, [requiereCliente]);
 
     useEffect(() => { cargarMes(); }, [id, mes]);
     useEffect(() => {
@@ -196,6 +196,13 @@ const DisponibilidadCancha = () => {
     const subtotalAdicionales = detallesAdicionales.reduce((total, detalle) => total + detalle.subtotal, 0);
     const subtotalReserva = Number(cancha?.precio_hora || 0) * horasSeleccionadas.length;
     const totalReserva = subtotalReserva + subtotalAdicionales;
+    const terminoCliente = filtroCliente.trim().toLocaleLowerCase('es');
+    const clientesVisibles = clientes.filter((cliente) => {
+        const idCliente = cliente.id_cliente ?? cliente.id_usuario ?? cliente.id;
+        const nombre = `${cliente.nombre || ''} ${cliente.apellidos || cliente.paterno || cliente.apellido_paterno || cliente.apellidoPaterno || ''}`.trim();
+        const datosCliente = `${idCliente} ${nombre} ${cliente.correo || ''}`.toLocaleLowerCase('es');
+        return datosCliente.includes(terminoCliente);
+    });
 
     const hoy = fechaClave(new Date());
     const cambiarMes = (salto: number) => {
@@ -206,8 +213,8 @@ const DisponibilidadCancha = () => {
 
     const crearReserva = async () => {
         if (!cancha || !horaSeleccionada) return;
-        if (esAdmin && !clienteSeleccionado) {
-            setError('Selecciona un cliente antes de confirmar la reserva como administrador.');
+        if (requiereCliente && !clienteSeleccionado) {
+            setError('Selecciona un cliente antes de confirmar la reserva.');
             return;
         }
         setError('');
@@ -221,7 +228,7 @@ const DisponibilidadCancha = () => {
                 observaciones: observaciones.trim() || undefined
             };
 
-            if (esAdmin) {
+            if (requiereCliente) {
                 payload.id_cliente = Number(clienteSeleccionado);
             }
 
@@ -239,7 +246,13 @@ const DisponibilidadCancha = () => {
             await cargarMes();
             await cargarDia();
         } catch (err: any) {
-            setError(err.response?.data?.message || err.response?.data?.error || 'El horario ya fue reservado. Elige otro.');
+            const mensajeError = err.response?.data?.message || err.response?.data?.error || '';
+            if (/debe seleccionar un cliente/i.test(mensajeError)) {
+                setClienteObligatorioServidor(true);
+                setError('Selecciona un cliente asociado y vuelve a confirmar la reserva.');
+            } else {
+                setError(mensajeError || 'El horario ya fue reservado. Elige otro.');
+            }
             await cargarMes();
             await cargarDia();
         } finally {
@@ -254,7 +267,7 @@ const DisponibilidadCancha = () => {
 
     return (
         <div className="mx-auto max-w-6xl space-y-6 pb-8">
-            <button type="button" onClick={() => navigate('/canchas')} className="inline-flex items-center gap-2 text-sm font-semibold text-claro-primario transition hover:gap-3">← Volver a canchas</button>
+            <button type="button" onClick={() => navigate('/canchas')} className="inline-flex items-center gap-2 text-sm font-semibold text-claro-primario transition hover:gap-3 dark:text-oscuro-primario">← Volver a canchas</button>
             <header className="overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 p-6 text-white shadow-xl md:p-8">
                 <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
                     <div>
@@ -278,7 +291,7 @@ const DisponibilidadCancha = () => {
                         <h2 className="text-lg font-semibold capitalize text-claro-texto dark:text-oscuro-texto">{nombreMes}</h2>
                         <button type="button" onClick={() => cambiarMes(1)} className="rounded-lg border border-claro-borde px-3 py-2" aria-label="Mes siguiente">→</button>
                     </div>
-                    <div className="mb-2 grid grid-cols-7 text-center text-xs font-semibold uppercase text-claro-texto2">
+                    <div className="mb-2 grid grid-cols-7 text-center text-xs font-semibold uppercase text-claro-texto2 dark:text-oscuro-texto2">
                         {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((dia) => <span key={dia} className="p-2">{dia}</span>)}
                     </div>
                     <div className="grid grid-cols-7 gap-1">
@@ -300,13 +313,13 @@ const DisponibilidadCancha = () => {
                 <section className="rounded-3xl border border-claro-borde bg-claro-tarjeta p-5 shadow-sm dark:bg-oscuro-tarjeta md:p-6">
                     <div className="flex items-start justify-between gap-3">
                         <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-claro-primario">Paso 1 · Horario</p>
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-claro-primario dark:text-oscuro-primario">Paso 1 · Horario</p>
                             <h2 className="mt-1 text-lg font-semibold text-claro-texto dark:text-oscuro-texto">Elige hasta 3 horas seguidas</h2>
-                            <p className="mt-1 text-sm text-claro-texto2">{new Date(`${fechaSeleccionada}T12:00:00`).toLocaleDateString('es-ES')}</p>
+                            <p className="mt-1 text-sm text-claro-texto2 dark:text-oscuro-texto2">{new Date(`${fechaSeleccionada}T12:00:00`).toLocaleDateString('es-ES')}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                            <span className="rounded-full bg-claro-primario/10 px-3 py-1 text-xs font-semibold text-claro-primario">{horasSeleccionadas.length}/3 horas</span>
-                            {horasSeleccionadas.length > 0 && <button type="button" onClick={() => { setHorasSeleccionadas([]); setMensajeHorario(''); }} className="text-xs font-semibold text-claro-texto2 underline decoration-dotted underline-offset-2 hover:text-claro-primario">Limpiar</button>}
+                            <span className="rounded-full bg-claro-primario/10 px-3 py-1 text-xs font-semibold text-claro-primario dark:text-oscuro-primario">{horasSeleccionadas.length}/3 horas</span>
+                            {horasSeleccionadas.length > 0 && <button type="button" onClick={() => { setHorasSeleccionadas([]); setMensajeHorario(''); }} className="text-xs font-semibold text-claro-texto2 underline decoration-dotted underline-offset-2 hover:text-claro-primario dark:text-oscuro-texto2 dark:hover:text-oscuro-primario">Limpiar</button>}
                         </div>
                     </div>
                     <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -325,29 +338,38 @@ const DisponibilidadCancha = () => {
             <section className="rounded-3xl border border-claro-borde bg-claro-tarjeta p-5 shadow-sm dark:bg-oscuro-tarjeta md:p-6">
                 <div className="flex items-center justify-between gap-3">
                     <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-claro-primario">Paso 2 · Confirmación</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-claro-primario dark:text-oscuro-primario">Paso 2 · Confirmación</p>
                         <h2 className="mt-1 text-lg font-semibold text-claro-texto dark:text-oscuro-texto">Resumen de reserva</h2>
                     </div>
                     <span className="text-lg font-bold text-claro-primario dark:text-cyan-300">{horasSeleccionadas.length ? `Bs. ${totalReserva.toFixed(2)}` : 'Selecciona un horario'}</span>
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 md:grid-cols-4">
-                    <div><p className="text-xs text-claro-texto2">Cancha</p><p className="font-medium">{cancha.nombre}</p></div>
-                    <div><p className="text-xs text-claro-texto2">Fecha</p><p className="font-medium">{new Date(`${fechaSeleccionada}T12:00:00`).toLocaleDateString('es-ES')}</p></div>
-                    <div><p className="text-xs text-claro-texto2">Horario</p><p className="font-medium">{horaSeleccionada ? `${horaSeleccionada[0]} - ${horaSeleccionada[1]}` : 'Selecciona un horario'}</p></div>
-                    <div><p className="text-xs text-claro-texto2">Precio base</p><p className="font-medium">Bs. {Number(cancha.precio_hora).toFixed(2)} / hora</p></div>
+                    <div><p className="text-xs text-claro-texto2 dark:text-oscuro-texto2">Cancha</p><p className="font-medium">{cancha.nombre}</p></div>
+                    <div><p className="text-xs text-claro-texto2 dark:text-oscuro-texto2">Fecha</p><p className="font-medium">{new Date(`${fechaSeleccionada}T12:00:00`).toLocaleDateString('es-ES')}</p></div>
+                    <div><p className="text-xs text-claro-texto2 dark:text-oscuro-texto2">Horario</p><p className="font-medium">{horaSeleccionada ? `${horaSeleccionada[0]} - ${horaSeleccionada[1]}` : 'Selecciona un horario'}</p></div>
+                    <div><p className="text-xs text-claro-texto2 dark:text-oscuro-texto2">Precio base</p><p className="font-medium">Bs. {Number(cancha.precio_hora).toFixed(2)} / hora</p></div>
                 </div>
 
-                {esAdmin && (
+                {requiereCliente && (
                     <div className="mt-4">
                         <label className="block text-sm font-medium text-claro-texto dark:text-oscuro-texto">Cliente asociado *</label>
-                        <select value={clienteSeleccionado} onChange={(event) => setClienteSeleccionado(event.target.value)} className="mt-1 w-full rounded-lg border border-claro-borde bg-transparent p-3 text-claro-texto dark:text-oscuro-texto">
-                            <option value="">Seleccione un cliente</option>
-                            {clientes.map((cliente) => {
+                        <input
+                            type="search"
+                            value={filtroCliente}
+                            onChange={(event) => { setFiltroCliente(event.target.value); setClienteSeleccionado(''); setError(''); }}
+                            placeholder="Buscar por nombre o ID"
+                            aria-label="Buscar cliente por nombre o ID"
+                            autoComplete="off"
+                            className="mt-1 w-full rounded-lg border border-claro-borde bg-claro-tarjeta p-3 text-claro-texto placeholder:text-claro-texto2 focus:border-claro-primario focus:outline-none dark:border-oscuro-borde dark:bg-oscuro-tarjeta dark:text-oscuro-texto dark:placeholder:text-oscuro-texto2"
+                        />
+                        <select value={clienteSeleccionado} onChange={(event) => { setClienteSeleccionado(event.target.value); setError(''); }} className="mt-2 w-full rounded-lg border border-claro-borde bg-claro-tarjeta p-3 text-claro-texto focus:border-claro-primario focus:outline-none dark:border-oscuro-borde dark:bg-oscuro-tarjeta dark:text-oscuro-texto">
+                            <option value="">{clientesVisibles.length ? 'Seleccione un cliente' : 'No hay coincidencias'}</option>
+                            {clientesVisibles.map((cliente) => {
                                 const idCliente = cliente.id_cliente ?? cliente.id_usuario ?? cliente.id;
-                                const nombreCompleto = `${cliente.nombre || ''} ${cliente.paterno || cliente.apellido_paterno || cliente.apellidoPaterno || ''}`.trim();
+                                const nombreCompleto = `${cliente.nombre || ''} ${cliente.apellidos || cliente.paterno || cliente.apellido_paterno || cliente.apellidoPaterno || ''}`.trim();
                                 return (
                                     <option key={idCliente} value={String(idCliente)}>
-                                        {nombreCompleto || cliente.correo || `Cliente #${idCliente}`}
+                                        {nombreCompleto || cliente.correo || `Cliente`} · ID {idCliente}
                                     </option>
                                 );
                             })}
@@ -362,7 +384,7 @@ const DisponibilidadCancha = () => {
                 <div className="mt-4 border-t border-claro-borde pt-4">
                     <div className="mb-2 flex items-center justify-between gap-3">
                         <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-claro-primario">Opcionales</p>
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-claro-primario dark:text-oscuro-primario">Opcionales</p>
                             <h3 className="mt-1 text-sm font-semibold text-claro-texto dark:text-oscuro-texto">Agrega servicios</h3>
                         </div>
                         <span className="text-xs font-semibold text-claro-primario dark:text-cyan-300">Adicionales: Bs. {subtotalAdicionales.toFixed(2)}</span>
@@ -373,7 +395,7 @@ const DisponibilidadCancha = () => {
                             return <label key={servicio.nombre} className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 transition ${seleccionado ? 'border-claro-primario bg-claro-primario/10' : 'border-claro-borde hover:border-claro-primario/50'}`}>
                                 <input type="checkbox" checked={seleccionado} onChange={() => setAdicionalesSeleccionados((actuales) => ({ ...actuales, [servicio.nombre]: !actuales[servicio.nombre] }))} className="h-4 w-4 shrink-0 accent-cyan-600" />
                                 <span className="min-w-0 truncate text-xs font-semibold text-claro-texto dark:text-oscuro-texto">{servicio.nombre}</span>
-                                <span className="ml-auto shrink-0 text-xs text-claro-texto2">Bs. {servicio.precio.toFixed(2)}</span>
+                                <span className="ml-auto shrink-0 text-xs text-claro-texto2 dark:text-oscuro-texto2">Bs. {servicio.precio.toFixed(2)}</span>
                             </label>;
                         })}
                     </div>

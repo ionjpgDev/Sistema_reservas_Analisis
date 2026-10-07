@@ -7,6 +7,7 @@ import ModalCancelarReserva from '../components/canchas/ModalCancelarReserva';
 
 const MisReservas = () => {
     const [reservas, setReservas] = useState<any[]>([]);
+    const [pagosPorReserva, setPagosPorReserva] = useState<Record<number, any>>({});
     const [loading, setLoading] = useState(true);
     const [reservaPago, setReservaPago] = useState<any | null>(null);
     
@@ -21,6 +22,17 @@ const MisReservas = () => {
         try {
             const res = await api.get('/reservas/mis-reservas');
             setReservas(res.data.data || []);
+            try {
+                const respuestaPagos = await api.get('/pagos/historial');
+                const pagos = respuestaPagos.data?.data || [];
+                const pagosRecientes: Record<number, any> = {};
+                for (const pago of pagos) {
+                    if (!pagosRecientes[pago.id_reserva]) pagosRecientes[pago.id_reserva] = pago;
+                }
+                setPagosPorReserva(pagosRecientes);
+            } catch {
+                setPagosPorReserva({});
+            }
         } catch (error) {
             console.error('Error al cargar reservas', error);
         } finally {
@@ -82,29 +94,40 @@ const MisReservas = () => {
                             </tr>
                         </thead>
                         <tbody className="text-claro-texto dark:text-oscuro-texto">
-    {reservas.map((r) => (
+    {reservas.map((r) => {
+        const pago = pagosPorReserva[r.id_reserva];
+        const pagoPendiente = ['pendiente', 'pendiente_verificacion'].includes(pago?.estado);
+        const etiquetaEstado = pago?.estado === 'pagado' ? 'Pagado'
+            : pago?.estado === 'pendiente_verificacion' ? 'Pendiente de verificación'
+                : pago?.estado === 'rechazado' ? 'Pago rechazado'
+                    : r.estado === 'pendiente_pago' ? 'Pendiente de pago' : r.estado;
+        const claseEstado = pago?.estado === 'pagado' ? 'bg-green-100 text-green-700'
+            : pagoPendiente ? 'bg-yellow-100 text-yellow-700'
+                : pago?.estado === 'rechazado' || r.estado === 'cancelada' ? 'bg-red-100 text-red-700'
+                    : r.estado === 'confirmada' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700';
+
+        return (
         <tr key={r.id_reserva} className="border-t border-claro-borde dark:border-oscuro-borde">
             <td className="p-3" data-label="Cancha">{r.cancha_nombre}</td>
             <td className="p-3" data-label="Fecha">{new Date(r.fecha_reserva).toLocaleDateString()}</td>
             <td className="p-3" data-label="Horario">{r.hora_inicio} - {r.hora_fin}</td>
             <td className="p-3" data-label="Estado">
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    r.estado === 'confirmada' ? 'bg-green-100 text-green-700' :
-                    r.estado === 'pendiente' || r.estado === 'pendiente_pago' ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-red-100 text-red-700'
-                }`}>
-                    {r.estado === 'pendiente_pago' ? 'Pendiente de Pago' : r.estado}
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${claseEstado}`}>
+                    {etiquetaEstado}
                 </span>
+                {pago?.estado === 'rechazado' && pago.motivo_rechazo && <span className="mt-1 block max-w-xs text-xs text-red-700">Motivo: {pago.motivo_rechazo}</span>}
             </td>
             <td className="p-3" data-label="Acciones">
                 <div className="flex gap-3 flex-wrap">
                     {/* ✅ BOTÓN DE PAGAR - Se mantiene tal cual lo puso el grupo de pagos */}
-                    {r.estado !== 'cancelada' && (
+                    {r.estado !== 'cancelada' && pago?.estado !== 'pagado' && (
                         <button
+                            type="button"
+                            disabled={pagoPendiente}
                             onClick={() => setReservaPago({ ...r, detallesIniciales: obtenerAdicionalesReserva(r.id_reserva) })}
-                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                            💳 Pagar o reintentar
+                            {pagoPendiente ? 'En verificación' : pago?.estado === 'rechazado' ? 'Corregir pago' : 'Pagar reserva'}
                         </button>
                     )}
 
@@ -120,7 +143,8 @@ const MisReservas = () => {
                 </div>
             </td>
         </tr>
-    ))}
+        );
+    })}
 </tbody>
                     </table>
                 </div>

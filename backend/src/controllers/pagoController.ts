@@ -1,13 +1,13 @@
 import { Request, Response } from 'express';
 import { ReservaModel } from '../models/reservaModel';
 import { PagoModel } from '../models/pagoModel';
-import { pool } from '../config/database';
+import { calcularMontoReserva, PagoValidacionError, validarMontoInformado } from '../services/pago.service';
 
 export const PagoController = {
     procesarPagoConComprobante: async (req: Request, res: Response) => {
         try {
             const { id_usuario, rol } = (req as any).usuario;
-            const { id_reserva, metodo_pago, nro_comprobante, referencia_pasarela, monto } = req.body;
+            const { id_reserva, metodo_pago, nro_comprobante, referencia_pasarela, monto, detalles } = req.body;
 
             if (!id_reserva || !metodo_pago) {
                 return res.status(400).json({ error: 'id_reserva y metodo_pago son obligatorios' });
@@ -43,24 +43,12 @@ export const PagoController = {
             }
 
             const pagoExistente = await PagoModel.obtenerPorReserva(Number(id_reserva));
-            if (pagoExistente) {
+            if (pagoExistente && pagoExistente.estado !== 'rechazado') {
                 return res.status(400).json({ error: 'Esta reserva ya tiene un pago registrado' });
             }
 
-            const cancha = await pool.query('SELECT precio_hora FROM cancha WHERE id_cancha = $1', [reserva.id_cancha]);
-            if (cancha.rows.length === 0) {
-                return res.status(404).json({ error: 'Cancha no encontrada' });
-            }
-
-            const precioHora = parseFloat(cancha.rows[0].precio_hora);
-            const horaInicio = new Date(`2000-01-01T${reserva.hora_inicio}`);
-            const horaFin = new Date(`2000-01-01T${reserva.hora_fin}`);
-            const horas = (horaFin.getTime() - horaInicio.getTime()) / (1000 * 60 * 60);
-            const montoCalculado = precioHora * horas;
-            const montoFinal = monto === undefined || monto === '' ? montoCalculado : Number(monto);
-            if (!Number.isFinite(montoFinal) || montoFinal <= 0) {
-                return res.status(400).json({ error: 'El monto del pago debe ser mayor que cero' });
-            }
+            const { monto: montoFinal, detalles: detallesValidados } = await calcularMontoReserva(reserva, detalles);
+            validarMontoInformado(monto, montoFinal);
 
             let comprobanteUrl = null;
             if (req.file) {
@@ -78,6 +66,7 @@ export const PagoController = {
                 referencia_pasarela: referencia_pasarela || `RES-${id_reserva}`,
                 nro_comprobante: String(nro_comprobante || '').trim() || null,
                 comprobante_url: comprobanteUrl,
+                detalle_adicionales: detallesValidados,
                 estado: estadoPago
             });
 
@@ -96,6 +85,12 @@ export const PagoController = {
             });
 
         } catch (error: any) {
+            if (error instanceof PagoValidacionError) {
+                return res.status(400).json({ error: error.message });
+            }
+            if (error?.code === '23505') {
+                return res.status(409).json({ error: 'Ya existe un pago activo para esta reserva.' });
+            }
             console.error('Error en procesarPagoConComprobante:', error);
             res.status(500).json({ error: error.message || 'Error al procesar el pago' });
         }
@@ -130,24 +125,12 @@ export const PagoController = {
             }
 
             const pagoExistente = await PagoModel.obtenerPorReserva(Number(id_reserva));
-            if (pagoExistente) {
+            if (pagoExistente && pagoExistente.estado !== 'rechazado') {
                 return res.status(400).json({ error: 'Esta reserva ya tiene un pago registrado' });
             }
 
-            const cancha = await pool.query('SELECT precio_hora FROM cancha WHERE id_cancha = $1', [reserva.id_cancha]);
-            if (cancha.rows.length === 0) {
-                return res.status(404).json({ error: 'Cancha no encontrada' });
-            }
-
-            const precioHora = parseFloat(cancha.rows[0].precio_hora);
-            const horaInicio = new Date(`2000-01-01T${reserva.hora_inicio}`);
-            const horaFin = new Date(`2000-01-01T${reserva.hora_fin}`);
-            const horas = (horaFin.getTime() - horaInicio.getTime()) / (1000 * 60 * 60);
-            const montoBase = precioHora * horas;
-            const montoPago = monto === undefined || monto === '' ? montoBase : Number(monto);
-            if (!Number.isFinite(montoPago) || montoPago <= 0) {
-                return res.status(400).json({ error: 'El monto del pago debe ser mayor que cero' });
-            }
+            const { monto: montoPago } = await calcularMontoReserva(reserva);
+            validarMontoInformado(monto, montoPago);
 
             const tipoRegistro = metodo_pago === 'presencial' ? 'presencial' : 'online';
             const estadoPago = metodo_pago === 'presencial' ? 'pagado' : 'pendiente_verificacion';
@@ -177,6 +160,12 @@ export const PagoController = {
             });
 
         } catch (error: any) {
+            if (error instanceof PagoValidacionError) {
+                return res.status(400).json({ error: error.message });
+            }
+            if (error?.code === '23505') {
+                return res.status(409).json({ error: 'Ya existe un pago activo para esta reserva.' });
+            }
             console.error('Error en procesarPago:', error);
             res.status(500).json({ error: error.message || 'Error al procesar el pago' });
         }
@@ -228,10 +217,14 @@ export const PagoController = {
     verificarPago: async (req: Request, res: Response) => {
         try {
             const { id_pago } = req.params;
-            const { estado } = req.body;
+            const { estado, motivo_rechazo } = req.body;
 
             if (!estado || !['pagado', 'rechazado'].includes(estado)) {
                 return res.status(400).json({ error: 'Estado inválido. Use "pagado" o "rechazado"' });
+            }
+            const motivo = String(motivo_rechazo || '').trim();
+            if (estado === 'rechazado' && (motivo.length < 5 || motivo.length > 500)) {
+                return res.status(400).json({ error: 'Indica un motivo de rechazo de entre 5 y 500 caracteres.' });
             }
 
             const pago = await PagoModel.obtenerPorId(Number(id_pago));
@@ -245,7 +238,7 @@ export const PagoController = {
                 return res.status(400).json({ error: 'No se puede aprobar un pago virtual sin comprobante' });
             }
 
-            const pagoActualizado = await PagoModel.verificarPago(Number(id_pago), estado);
+            const pagoActualizado = await PagoModel.verificarPago(Number(id_pago), estado, motivo || null);
             if (!pagoActualizado) {
                 return res.status(409).json({ error: 'Este pago ya fue verificado' });
             }
@@ -344,12 +337,8 @@ export const PagoController = {
             }
 
             const pagoExistente = await PagoModel.obtenerPorReserva(Number(id_reserva));
-            if (pagoExistente && pagoExistente.estado !== 'rechazado') {
-                return res.status(400).json({ error: 'Esta reserva no tiene un pago rechazado' });
-            }
-
-            if (pagoExistente) {
-                await PagoModel.eliminarPago(Number(id_reserva));
+            if (!pagoExistente || pagoExistente.estado !== 'rechazado') {
+                return res.status(400).json({ error: 'Esta reserva no tiene un pago rechazado para reintentar.' });
             }
 
             await ReservaModel.actualizarEstado(Number(id_reserva), 'pendiente');

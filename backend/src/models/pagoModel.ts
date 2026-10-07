@@ -15,12 +15,13 @@ export const PagoModel = {
         referencia_pasarela?: string | null;
         nro_comprobante?: string | null;
         comprobante_url?: string | null;
+        detalle_adicionales?: unknown;
         estado?: string;
     }) => {
         const query = `
             INSERT INTO pago 
-            (id_reserva, monto, metodo_pago, tipo_registro, referencia_pasarela, nro_comprobante, estado, comprobante_url)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            (id_reserva, monto, metodo_pago, tipo_registro, referencia_pasarela, nro_comprobante, estado, comprobante_url, detalle_adicionales)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING *;
         `;
         const values = [
@@ -31,7 +32,8 @@ export const PagoModel = {
             data.referencia_pasarela || null,
             data.nro_comprobante || null,
             data.estado || 'pendiente_verificacion',
-            data.comprobante_url || null
+            data.comprobante_url || null,
+            JSON.stringify(data.detalle_adicionales || [])
         ];
 
         const result = await pool.query(query, values);
@@ -45,7 +47,9 @@ export const PagoModel = {
             JOIN reserva r ON p.id_reserva = r.id_reserva
             JOIN cliente cl ON r.id_cliente = cl.id_cliente
             JOIN usuario u ON cl.id_cliente = u.id_usuario
-            WHERE p.id_reserva = $1;
+            WHERE p.id_reserva = $1
+            ORDER BY p.id_pago DESC
+            LIMIT 1;
         `;
         const result = await pool.query(query, [id_reserva]);
         return result.rows[0];
@@ -56,7 +60,7 @@ export const PagoModel = {
             SELECT *
             FROM pago
             WHERE id_reserva = $1
-            ORDER BY fecha_pago DESC NULLS LAST;
+            ORDER BY id_pago DESC;
         `;
         const result = await pool.query(query, [id_reserva]);
         return result.rows;
@@ -73,15 +77,22 @@ export const PagoModel = {
         return result.rows[0];
     },
 
-    verificarPago: async (id_pago: number, estado: string) => {
+    verificarPago: async (id_pago: number, estado: string, motivoRechazo?: string | null) => {
         const query = `
             UPDATE pago 
-            SET estado = $1,
-                fecha_pago = CASE WHEN $1 = 'pagado' THEN now() ELSE fecha_pago END
-            WHERE id_pago = $2 AND estado IN ('pendiente', 'pendiente_verificacion')
+            SET estado = $1::varchar(30),
+                fecha_pago = CASE WHEN $2::boolean THEN now() ELSE fecha_pago END,
+                motivo_rechazo = CASE WHEN $3::boolean THEN $4::text ELSE NULL::text END
+            WHERE id_pago = $5 AND estado IN ('pendiente', 'pendiente_verificacion')
             RETURNING *;
         `;
-        const result = await pool.query(query, [estado, id_pago]);
+        const result = await pool.query(query, [
+            estado,
+            estado === 'pagado',
+            estado === 'rechazado',
+            motivoRechazo || null,
+            id_pago
+        ]);
         return result.rows[0];
     },
 
@@ -92,7 +103,7 @@ export const PagoModel = {
             JOIN reserva r ON p.id_reserva = r.id_reserva
             JOIN cancha c ON r.id_cancha = c.id_cancha
             WHERE r.id_cliente = $1
-            ORDER BY p.fecha_pago DESC;
+            ORDER BY p.id_pago DESC;
         `;
         const result = await pool.query(query, [id_cliente]);
         return result.rows;
@@ -114,11 +125,5 @@ export const PagoModel = {
         `;
         const result = await pool.query(query);
         return result.rows;
-    },
-
-    eliminarPago: async (id_reserva: number) => {
-        const query = `DELETE FROM pago WHERE id_reserva = $1 RETURNING *;`;
-        const result = await pool.query(query, [id_reserva]);
-        return result.rows[0];
     }
 };

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { crearPago, obtenerPagosReserva, type PagoDetalle } from '../services/pago.api';
+import { crearPago, obtenerPagosReserva, reintentarPago, type PagoDetalle } from '../services/pago.api';
 
 interface ReservaPago {
     id_reserva: number;
@@ -30,6 +30,7 @@ const PagoDemo = ({ reserva, onClose, onComplete }: PagoDemoProps) => {
     const [referenciaOperacion, setReferenciaOperacion] = useState('');
     const [comprobante, setComprobante] = useState<File | null>(null);
     const [historial, setHistorial] = useState<any[]>([]);
+    const [historialCargando, setHistorialCargando] = useState(true);
     const [cargando, setCargando] = useState(false);
     const [mensaje, setMensaje] = useState('');
     const [error, setError] = useState('');
@@ -42,12 +43,18 @@ const PagoDemo = ({ reserva, onClose, onComplete }: PagoDemoProps) => {
     const detalles = reserva.detallesIniciales || [];
     const total = precioReserva + detalles.reduce((suma, detalle) => suma + detalle.subtotal, 0);
     const referenciaAuto = useMemo(() => `RES-${reserva.id_reserva}-${Date.now().toString().slice(-6)}`, [reserva.id_reserva]);
+    const pagoActual = historial[0];
+    const pagoEnCurso = ['pendiente', 'pendiente_verificacion'].includes(pagoActual?.estado);
+    const pagoConfirmado = pagoActual?.estado === 'pagado';
 
     const cargarHistorial = async () => {
+        setHistorialCargando(true);
         try {
             setHistorial(await obtenerPagosReserva(reserva.id_reserva));
         } catch {
             setHistorial([]);
+        } finally {
+            setHistorialCargando(false);
         }
     };
 
@@ -69,6 +76,9 @@ const PagoDemo = ({ reserva, onClose, onComplete }: PagoDemoProps) => {
 
         setCargando(true);
         try {
+            if (pagoActual?.estado === 'rechazado') {
+                await reintentarPago(reserva.id_reserva);
+            }
             const response = await crearPago({
                 id_reserva: reserva.id_reserva,
                 monto: Number(total.toFixed(2)),
@@ -79,11 +89,9 @@ const PagoDemo = ({ reserva, onClose, onComplete }: PagoDemoProps) => {
                 detalles
             });
 
-            setMensaje(
-                response?.success
-                    ? 'Pago registrado para revisión. Usa la referencia o el QR general del banco para confirmar la transferencia.'
-                    : 'No se pudo registrar el pago.'
-            );
+            setMensaje(response?.success
+                ? 'Comprobante enviado. La reserva queda pendiente de verificación; podrás consultar el estado en Mis reservas.'
+                : 'No se pudo registrar el pago.');
 
             await cargarHistorial();
             onComplete();
@@ -96,7 +104,7 @@ const PagoDemo = ({ reserva, onClose, onComplete }: PagoDemoProps) => {
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm" onClick={onClose}>
-            <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-white/10 bg-claro-tarjeta shadow-2xl dark:bg-oscuro-tarjeta" onClick={(event) => event.stopPropagation()}>
+            <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-white/10 bg-claro-tarjeta text-claro-texto shadow-2xl dark:bg-oscuro-tarjeta dark:text-oscuro-texto" onClick={(event) => event.stopPropagation()}>
                 <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 p-6 text-white md:p-7">
                     <div className="mb-5 flex items-start justify-between">
                         <div>
@@ -114,13 +122,28 @@ const PagoDemo = ({ reserva, onClose, onComplete }: PagoDemoProps) => {
                 </div>
 
                 <form onSubmit={enviarPago} className="space-y-6 p-6 md:p-7">
+                    {pagoConfirmado && (
+                        <div role="status" className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-800 dark:border-green-900 dark:bg-green-950/30 dark:text-green-200">
+                            Esta reserva ya tiene un pago aprobado. No hace falta registrar otro.
+                        </div>
+                    )}
+                    {pagoEnCurso && (
+                        <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                            Ya recibimos un pago para esta reserva. Está pendiente de verificación; no necesitas enviarlo otra vez.
+                        </div>
+                    )}
+                    {pagoActual?.estado === 'rechazado' && pagoActual.motivo_rechazo && (
+                        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
+                            <strong>Motivo del rechazo:</strong> {pagoActual.motivo_rechazo}
+                        </div>
+                    )}
                     <section>
                         <div className="mb-3 flex items-end justify-between">
                             <div>
-                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-claro-primario">Elige una opción</p>
+                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-claro-primario dark:text-oscuro-primario">Elige una opción</p>
                                 <h3 className="mt-1 font-semibold text-claro-texto dark:text-oscuro-texto">Canal de pago</h3>
                             </div>
-                            <span className="text-xs text-claro-texto2">Verificación manual</span>
+                            <span className="text-xs text-claro-texto2 dark:text-oscuro-texto2">Verificación manual</span>
                         </div>
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                             {(['qr', 'transferencia', 'tarjeta_credito'] as MetodoPago[]).map((opcion) => (
@@ -131,7 +154,7 @@ const PagoDemo = ({ reserva, onClose, onComplete }: PagoDemoProps) => {
                                     className={`rounded-2xl border p-4 text-left text-sm capitalize transition ${metodo === opcion ? 'border-claro-primario bg-claro-primario/10 shadow-sm' : 'border-claro-borde hover:border-claro-primario/50'}`}
                                 >
                                     <span className="block text-lg">{opcion === 'qr' ? '▦' : opcion === 'transferencia' ? '↗' : '💳'}</span>
-                                    <span className="mt-2 block font-semibold">{opcion === 'qr' ? 'Pago QR' : opcion === 'transferencia' ? 'Transferencia' : 'Tarjeta de crédito'}</span>
+                                    <span className="mt-2 block font-semibold">{opcion === 'qr' ? 'Pago QR' : opcion === 'transferencia' ? 'Transferencia' : 'Pago externo con tarjeta'}</span>
                                 </button>
                             ))}
                         </div>
@@ -147,7 +170,7 @@ const PagoDemo = ({ reserva, onClose, onComplete }: PagoDemoProps) => {
                             maxLength={50}
                             className="mt-1 w-full rounded-lg border border-claro-borde bg-transparent p-3"
                         />
-                        <span className="mt-1 block text-xs text-claro-texto2">Copia el identificador que aparece en el comprobante. Referencia de reserva: {referenciaAuto}</span>
+                        <span className="mt-1 block text-xs text-claro-texto2 dark:text-oscuro-texto2">Copia el identificador que aparece en el comprobante. Referencia de reserva: {referenciaAuto}</span>
                     </label>
 
                     <label className="block text-sm text-claro-texto dark:text-oscuro-texto">
@@ -175,21 +198,21 @@ const PagoDemo = ({ reserva, onClose, onComplete }: PagoDemoProps) => {
                             }}
                             className="mt-2 block w-full rounded-lg border border-claro-borde bg-transparent p-3 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-claro-primario file:px-3 file:py-2 file:font-medium file:text-white"
                         />
-                        <span className="mt-1 block text-xs text-claro-texto2">JPG, PNG, WEBP o PDF · máximo 5 MB</span>
-                        {comprobante && <span className="mt-1 block text-xs text-claro-primario">Adjunto: {comprobante.name}</span>}
+                        <span className="mt-1 block text-xs text-claro-texto2 dark:text-oscuro-texto2">JPG, PNG, WEBP o PDF · máximo 5 MB</span>
+                        {comprobante && <span className="mt-1 block text-xs text-claro-primario dark:text-oscuro-primario">Adjunto: {comprobante.name}</span>}
                     </label>
 
                     {metodo === 'qr' ? (
                         <div className="flex items-center gap-4 rounded-2xl border border-cyan-200 bg-cyan-50 p-4 dark:border-cyan-900 dark:bg-cyan-950/40">
                             <img src="/demo-qr.svg" alt="Código QR general del banco" className="h-28 w-28 rounded-xl bg-white p-2" />
                             <div>
-                                <p className="font-semibold text-slate-900 dark:text-cyan-100">QR general de la cuenta bancaria</p>
+                                <p className="font-semibold text-slate-900 dark:text-cyan-100">QR de la cuenta bancaria</p>
                                 <p className="mt-1 text-xs text-slate-600 dark:text-cyan-200">Paga el monto indicado en la app del banco y adjunta el comprobante. La reserva queda pendiente hasta la revisión manual.</p>
                             </div>
                         </div>
                     ) : metodo === 'tarjeta_credito' ? (
                         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-                            Completa el pago con tarjeta de crédito en el canal bancario autorizado y adjunta el comprobante. No ingreses el número ni el código de seguridad de tu tarjeta; el pago se confirmará tras la revisión manual.
+                            Realiza el pago en el canal externo autorizado y adjunta el comprobante. Esta pantalla no procesa tarjetas ni solicita sus datos; el pago se confirmará tras la revisión manual.
                         </div>
                     ) : (
                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
@@ -200,10 +223,10 @@ const PagoDemo = ({ reserva, onClose, onComplete }: PagoDemoProps) => {
                     <section>
                         <div className="mb-3 flex items-end justify-between gap-3">
                             <div>
-                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-claro-primario">Resumen elegido</p>
+                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-claro-primario dark:text-oscuro-primario">Resumen elegido</p>
                                 <h3 className="mt-1 font-semibold text-claro-texto dark:text-oscuro-texto">Servicios adicionales</h3>
                             </div>
-                            <span className="text-xs text-claro-texto2">Se seleccionan en la reserva</span>
+                            <span className="text-xs text-claro-texto2 dark:text-oscuro-texto2">Se seleccionan en la reserva</span>
                         </div>
                         {detalles.length ? (
                             <div className="space-y-2">
@@ -211,14 +234,14 @@ const PagoDemo = ({ reserva, onClose, onComplete }: PagoDemoProps) => {
                                     <div key={detalle.nombre} className="flex items-center justify-between rounded-xl border border-claro-borde bg-claro-tinte/40 px-4 py-3 text-sm dark:bg-oscuro-tinte/30">
                                         <span>
                                             <span className="font-semibold text-claro-texto dark:text-oscuro-texto">{detalle.nombre}</span>
-                                            <span className="ml-2 text-xs text-claro-texto2">{detalle.cantidad} × Bs. {detalle.precio_unitario.toFixed(2)}</span>
+                                            <span className="ml-2 text-xs text-claro-texto2 dark:text-oscuro-texto2">{detalle.cantidad} × Bs. {detalle.precio_unitario.toFixed(2)}</span>
                                         </span>
-                                        <span className="font-semibold text-claro-primario">Bs. {detalle.subtotal.toFixed(2)}</span>
+                                        <span className="font-semibold text-claro-primario dark:text-oscuro-primario">Bs. {detalle.subtotal.toFixed(2)}</span>
                                     </div>
                                 ))}
                             </div>
                         ) : (
-                            <p className="rounded-xl border border-dashed border-claro-borde p-4 text-sm text-claro-texto2">No agregaste servicios adicionales.</p>
+                            <p className="rounded-xl border border-dashed border-claro-borde p-4 text-sm text-claro-texto2 dark:text-oscuro-texto2">No agregaste servicios adicionales.</p>
                         )}
                     </section>
 
@@ -231,12 +254,12 @@ const PagoDemo = ({ reserva, onClose, onComplete }: PagoDemoProps) => {
                     {error && <p className="rounded-lg bg-red-100 p-3 text-sm text-red-700">{error}</p>}
                     {mensaje && <p className="rounded-lg bg-green-100 p-3 text-sm text-green-700">{mensaje}</p>}
                     <button
-                        disabled={cargando || !comprobante || !referenciaOperacion.trim()}
+                        disabled={cargando || historialCargando || pagoEnCurso || pagoConfirmado || !comprobante || !referenciaOperacion.trim()}
                         className="w-full rounded-xl bg-claro-primario px-4 py-3.5 font-semibold text-white shadow-lg shadow-cyan-900/10 transition hover:-translate-y-0.5 hover:bg-claro-hover disabled:opacity-50"
                     >
-                        {cargando ? 'Registrando pago...' : `Registrar pago Bs. ${total.toFixed(2)}`}
+                        {cargando ? 'Registrando pago...' : pagoEnCurso ? 'Pago pendiente de verificación' : pagoConfirmado ? 'Pago aprobado' : `Registrar pago Bs. ${total.toFixed(2)}`}
                     </button>
-                    <button type="button" onClick={onClose} className="w-full rounded-xl border border-claro-borde px-4 py-3 text-sm font-semibold text-claro-texto2 transition hover:border-claro-primario hover:text-claro-primario">
+                    <button type="button" onClick={onClose} className="w-full rounded-xl border border-claro-borde px-4 py-3 text-sm font-semibold text-claro-texto2 transition hover:border-claro-primario hover:text-claro-primario dark:border-oscuro-borde dark:text-oscuro-texto2 dark:hover:border-oscuro-primario dark:hover:text-oscuro-primario">
                         Pagar después desde Mis reservas
                     </button>
                 </form>
@@ -244,12 +267,15 @@ const PagoDemo = ({ reserva, onClose, onComplete }: PagoDemoProps) => {
                 <section className="border-t border-claro-borde bg-claro-tinte/50 p-6 dark:bg-oscuro-tinte/30 md:p-7">
                     <h3 className="mb-2 font-semibold text-claro-texto dark:text-oscuro-texto">Historial de intentos</h3>
                     {historial.length === 0 ? (
-                        <p className="text-sm text-claro-texto2">Todavía no hay intentos.</p>
+                        <p className="text-sm text-claro-texto2 dark:text-oscuro-texto2">Todavía no hay intentos.</p>
                     ) : (
                         historial.map((pago) => (
-                            <div key={pago.id_pago} className="flex justify-between border-b border-claro-borde py-2 text-sm">
-                                <span>#{pago.id_pago} · {pago.metodo_pago}</span>
-                                <span className={pago.estado === 'pagado' ? 'font-semibold text-green-600' : 'font-semibold text-red-600'}>{pago.estado}</span>
+                            <div key={pago.id_pago} className="flex flex-wrap justify-between gap-2 border-b border-claro-borde py-2 text-sm">
+                                <span>Intento #{pago.id_pago} · {pago.metodo_pago}</span>
+                                <span className={pago.estado === 'pagado' ? 'font-semibold text-green-600' : pago.estado === 'rechazado' ? 'font-semibold text-red-600' : 'font-semibold text-amber-600'}>
+                                    {pago.estado === 'pagado' ? 'Aprobado' : pago.estado === 'rechazado' ? 'Rechazado' : 'En revisión'}
+                                </span>
+                                {pago.estado === 'rechazado' && pago.motivo_rechazo && <p className="w-full text-xs text-red-700 dark:text-red-300">Motivo: {pago.motivo_rechazo}</p>}
                             </div>
                         ))
                     )}

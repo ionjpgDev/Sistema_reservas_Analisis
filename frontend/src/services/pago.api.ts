@@ -27,6 +27,7 @@ export const crearPago = async (data: CrearPagoInput) => {
     formData.append('nro_comprobante', data.nro_comprobante);
     formData.append('referencia_pasarela', data.referencia_pasarela || `RES-${data.id_reserva}`);
     formData.append('comprobante', data.comprobante);
+    formData.append('detalles', JSON.stringify(data.detalles || []));
 
     const response = await api.post('/pagos/procesar-con-comprobante', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -37,4 +38,9 @@ export const crearPago = async (data: CrearPagoInput) => {
 export const obtenerPagosReserva = async (idReserva: number) => {
     const response = await api.get(`/pagos/reserva/${idReserva}`);
     return response.data.data || [];
+};
+
+export const reintentarPago = async (idReserva: number) => {
+    const response = await api.post(`/pagos/reintentar/${idReserva}`);
+    return response.data;
 };
